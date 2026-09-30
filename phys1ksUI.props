@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    phys1ksUI: the shared look for phys1ks's Dalamud plugins. Import it from a plugin's csproj:
+
+      <Import Project="..\..\phys1ksUI\phys1ksUI.props" />
+
+    It compiles the kit's source into the plugin (namespace phys1ksUI, everything internal), embeds Roboto and copies
+    Roboto's license next to the plugin dll.
+  -->
+  <PropertyGroup>
+    <Phys1ksUIDir>$(MSBuildThisFileDirectory)</Phys1ksUIDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(Phys1ksUIDir)src\**\*.cs" LinkBase="phys1ksUI" />
+    <!-- Roboto v2 (Apache License 2.0). Fonts.cs finds these by the "Fonts.Roboto-*.ttf" suffix. -->
+    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Regular.ttf" LogicalName="phys1ksUI.Fonts.Roboto-Regular.ttf" />
+    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Medium.ttf" LogicalName="phys1ksUI.Fonts.Roboto-Medium.ttf" />
+    <None Include="$(Phys1ksUIDir)Fonts\LICENSE-Roboto.txt" Link="LICENSE-Roboto.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

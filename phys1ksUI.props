@@ -4,17 +4,19 @@
 
       <Import Project="..\..\phys1ksUI\phys1ksUI.props" />
 
-    It compiles the kit's source into the plugin (namespace phys1ksUI, everything internal), embeds Roboto and copies
-    Roboto's license next to the plugin dll.
+    It compiles the kit's source into the plugin (namespace phys1ksUI; everything internal except AccentColor, which
+    a plugin's public Configuration stores), embeds Roboto and copies Roboto's license next to the plugin dll.
+    Maintainers: read CLAUDE.md next to this file.
   -->
   <PropertyGroup>
     <Phys1ksUIDir>$(MSBuildThisFileDirectory)</Phys1ksUIDir>
   </PropertyGroup>
+  <!-- Each item excludes itself if it's already there: importing this file twice adds nothing twice. -->
   <ItemGroup>
-    <Compile Include="$(Phys1ksUIDir)src\**\*.cs" LinkBase="phys1ksUI" />
-    <!-- Roboto v2 (Apache License 2.0). Fonts.cs finds these by the "Fonts.Roboto-*.ttf" suffix. -->
-    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Regular.ttf" LogicalName="phys1ksUI.Fonts.Roboto-Regular.ttf" />
-    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Medium.ttf" LogicalName="phys1ksUI.Fonts.Roboto-Medium.ttf" />
-    <None Include="$(Phys1ksUIDir)Fonts\LICENSE-Roboto.txt" Link="LICENSE-Roboto.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="$(Phys1ksUIDir)src\**\*.cs" Exclude="@(Compile)" LinkBase="phys1ksUI" />
+    <!-- Roboto v2 (Apache License 2.0). Fonts.cs opens these by these exact names. -->
+    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Regular.ttf" Exclude="@(EmbeddedResource)" LogicalName="phys1ksUI.Fonts.Roboto-Regular.ttf" />
+    <EmbeddedResource Include="$(Phys1ksUIDir)Fonts\Roboto-Medium.ttf" Exclude="@(EmbeddedResource)" LogicalName="phys1ksUI.Fonts.Roboto-Medium.ttf" />
+    <None Include="$(Phys1ksUIDir)Fonts\LICENSE-Roboto.txt" Exclude="@(None)" Link="LICENSE-Roboto.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

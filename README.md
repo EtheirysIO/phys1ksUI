@@ -2,7 +2,7 @@
 
 The shared look for phys1ks's Dalamud plugins. It started as Invenwhorey's design and is compiled as source into each
 plugin, so every plugin gets the same window, fonts and widgets without shipping another DLL. Invenwhorey and MakeShopper
-both run on it (`MIGRATE-INVENWHOREY.md` is the finished migration's notes, kept for history).
+both run on it. Changing the kit? Read `CLAUDE.md` first: the change rules, the API map and the changelog live there.
 
 ## Use it in a plugin
 
@@ -28,7 +28,8 @@ both run on it (`MIGRATE-INVENWHOREY.md` is the finished migration's notes, kept
    Call `Kit.Dispose()` last in the plugin's Dispose: after removing the plugin's own `UiBuilder.Draw` handler and
    `WindowSystem.RemoveAllWindows()`, so no window draws with the fonts it releases.
 4. Derive the main window from `KitWindow`:
-   - `Accent`, `PageTitle`, `DrawSidebarNav()` (use `W.NavRow`) and `DrawBody()` are required.
+   - `Accent`, `Colorblind`, `PageTitle`, `DrawSidebarNav()` (use `W.NavRow`) and `DrawBody()` are required
+     (`protected override bool Colorblind => config.Colorblind;`).
    - Optional:
      - `DrawHeaderRight(slot)` and `HeaderRightWidth` (page actions in the header; measure the width in the body font).
      - `DrawBodyTop()` (a page's own tab bar) and `PageKey` (what counts as a new page).
@@ -36,7 +37,6 @@ both run on it (`MIGRATE-INVENWHOREY.md` is the finished migration's notes, kept
      - `ExtraFlags` (window flags: the shell sets `Flags` itself every frame).
 5. Put `Appearance.DrawCard(ref accent, ref textScale, ref colorblind)` on the Settings page. Copy the three values in and out
    of your config, and save the config when it returns true.
-6. Override `Colorblind` in the window (`protected override bool Colorblind => config.Colorblind;`).
 
 ## Files
 
@@ -47,9 +47,10 @@ both run on it (`MIGRATE-INVENWHOREY.md` is the finished migration's notes, kept
 | `src/Widgets.cs`, `src/Widgets.Extra.cs` | `W`: buttons, checkbox, toggle, segmented control, cards, chips and pills, banners, inputs, combo, dividers, tables, nav rows, tooltips, icons. |
 | `src/Motion.cs` | Hover fades, eased values, tweens (in-out and out), reveals and pulses; all of it respects "reduce motion". |
 | `src/Modal.cs` | `Modal.Draw`: themed modal dialogs over a hand-painted scrim. |
-| `src/KitWindow.cs` | The window shell: sidebar with brand, nav and status block; header strip; body. It also minimizes to a title bar (the chevron or a double-click on the header) that shows what's running, with Cancel. Call `Expand()` when a command opens a page. Also `KitRecovery` (see "When a draw throws"). |
+| `src/KitWindow.cs` | The window shell: sidebar with brand, nav and status block; header strip; body. It also minimizes to a title bar (the chevron or a double-click on the header) that shows what's running, with Cancel. Call `Expand()` when a command opens a page. |
+| `src/Recovery.cs` | `KitRecovery`: puts ImGui back together after a draw throws (see "When a draw throws"). |
 | `src/Appearance.cs` | The standard accent and text-size settings card. |
-| `src/Kit.cs` | `AccentColor` and `Kit.Initialize` / `Kit.Dispose`. |
+| `src/Kit.cs` | `AccentColor`, `Kit.Initialize` / `Kit.Dispose`, and the once-per-frame hook (text-size changes, modal dim). |
 
 ## Design rules
 
@@ -110,25 +111,27 @@ widget dims and ignores clicks inside `ImGui.BeginDisabled()`.
 | Buttons | `PrimaryButton`, `SecondaryButton`, `DangerButton`, `GhostButton`, `IconTextButton(icon, label, kind)`, `ButtonWidth`, `IconButton`, `RoundButton`, `CompactButton` |
 | Choices | `Toggle(label, ref value)`, `ToggleWidth(label)`, `Checkbox(id, ref value, mixed = false, height = 0, tooltip, enabled)`, `Segmented(id, options, ref index, width)`, `SegmentedWidth` |
 | Inputs | `SearchBox(id, ref text, hint, width, maxLength = 512, error = false)`, `TextInput(id, ref text, hint, width, maxLength = 256, error = false, flags = None)`, `Combo(id, preview, width, height = 0)` → `ComboScope` (`.Open`) with `ComboItem(label, selected)`, `Combo(id, items, ref index, width, height = 0)` |
-| Surfaces | `Card`, `FoldCard`, `Avail()`, `NewSurface()`, `Spacer()`, `Divider(space = 0)`, `RightAlign(width)` |
-| Text | `Heading`, `PageTitle`, `TextWrapped`, `Link`, `Stat`, `TrackedCaps(dl, pos, text, color)`, `TrackedCapsWidth`, `Fit(text, maxWidth)`, `Visible(label)` |
+| Surfaces | `Card`, `FoldCard`, `Avail()`, `NewSurface()`, `Spacer()`, `Divider(space = 0)`, `RightAlign(width)`, `Hairline(dl, min, max)`, `DrawPanel(dl, min, max)` |
+| Text | `Heading`, `TextWrapped`, `Link`, `Stat`, `TrackedCaps(dl, pos, text, color)`, `TrackedCapsWidth`, `Fit(text, maxWidth)`, `Visible(label)` |
 | Tags | `Chip(text, color, status = false)`, `ChipWidth`, `DrawChip(dl, pos, text, color, status = false)`; `Pill(text, bg, fg, status = false)`, `PillWidth`, `DrawPill(dl, pos, text, bg, fg, status = false, pad = null)`. The `Draw*` forms paint at a position (left edge, vertical center) without a layout item and return their width. |
-| Status | `StatusDot(color, pulse)`, `StatusDot(dl, center, color, pulse, radius = 0)`, `Banner(text, color, dismissable = false, icon = null)`, `ProgressBar(dl, min, width, height, fraction)`, `Tooltip`, `HelpMark` |
+| Status | `StatusDot(color, pulse)`, `StatusDot(dl, center, color, pulse, radius = 0)`, `Banner(text, color, dismissable = false, icon = null, id = null)`, `ProgressBar(dl, min, width, height, fraction)`, `Tooltip`, `HelpMark(text, id = null)` |
 | Tables | `Table(id, columns, flags, outerSize = default)` → `TableScope` (`.Open`); `FixedColumn(name, width, flags = None, userId = 0)`; `TableHeaders(trackedCaps = false, rowHeight = 0, labels = null)`; `TableHeadersWithCheckAll(ticked, total, ...same options)`. With tracked caps, sortable columns keep click-to-sort and the arrow. |
 | Sidebar | `NavRow(id, icon, label, active, subtitle, enabled)` |
-| Icons | `ItemIcon(itemId, hq, size)`, `Glyph(icon)` (cached glyph string), `DrawGlyphCentered`, `DrawGlyphAt(dl, icon, center, px, color)`, `DrawIconLabelCentered` |
-| Theme | `Theme.Wash(alpha)`, `Theme.Shadow(alpha)`, `Theme.ColorblindShape(color)`, `Theme.SameRgb(a, b)` |
-| Motion | `Approach`, `Hover`, `Reveal`, `Tween` (in-out), `TweenOut` (out), `Pulse`, `IsStale` |
+| Icons | `ItemIcon(itemId, hq, size)` (items, HQ, collectables and event items), `Glyph(icon)` (cached glyph string), `DrawGlyphCentered`, `DrawGlyphAt(dl, icon, center, px, color)` |
+| Theme | `Theme.Wash(alpha)`, `Theme.Shadow(alpha)`, `Theme.Fade(color, mul)`, `Theme.ColorblindShape(color)`, `Theme.SameRgb(a, b)` |
+| Motion | `Approach`, `Hover`, `Reveal`, `Tween` (in-out), `TweenOut` (out), `Pulse`, `IsStale`, `EaseSmooth` |
 
 ## When a draw throws
 
-`KitWindow` catches exceptions from the page body, the sidebar nav and the rest of the shell. `KitRecovery.RecoverTo`
-then ends whatever the throwing code left open (child windows, popups, tables, tab bars, groups, IDs, disabled blocks,
-style colors and vars) back to the window that was drawing, using ImGui's own `ErrorCheckEndWindowRecover`, so the frame
-still ends cleanly. A throwing page shows an error banner in place of its rest; the header, sidebar and dialogs keep
-working. Each distinct error is logged once, and again if it comes back after a clean frame. `Modal.Draw` recovers the
-same way inside its dialog. The kit's own scopes (`Card`, `FoldCard`, `Table`) notice they are being unwound in the
-wrong window and leave the pops to the recovery. Fonts pushed without a `using` aren't recovered: push fonts with `using`.
+`KitWindow` catches exceptions from the page body, the sidebar nav and the rest of the shell (dialogs included). It
+catches them with an exception filter, which runs before any `using` scope unwinds, so the kit's scopes (`Card`,
+`FoldCard`, `Table`, `Combo`, style scopes) pop nothing on the way out. `KitRecovery.RecoverTo` then ends whatever the
+throwing code left open (child windows, popups, tooltips, tables, tab bars, groups, IDs, disabled blocks, style colors
+and vars) back to the window that was drawing, using ImGui's own `ErrorCheckEndWindowRecover`, and finishes the cards'
+own cleanup. The frame still ends cleanly. A throwing page shows an error banner in place of its rest, and the header,
+sidebar and dialogs keep working. Each distinct error is logged once, and again if it comes back after a clean frame.
+Fonts pushed without a `using` aren't recovered: push fonts with `using`. `CLAUDE.md` has the rules for writing new
+scopes.
 
 ## Licenses
 

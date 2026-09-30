@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Dalamud.Interface;
 using Dalamud.Interface.GameFonts;
 using Dalamud.Interface.ManagedFontAtlas;
@@ -15,7 +14,7 @@ namespace phys1ksUI;
 ///
 /// Sizes are design pixels; Dalamud's atlas (FontScaleMode.Default) applies the global UI scale.
 /// All handles are created in <see cref="Initialize"/> (at plugin load, so the first frame has no
-/// default-font flash) and released in <see cref="Dispose"/>.
+/// default-font flash), rebuilt as a set on a text-size change, and released in <see cref="Dispose"/>.
 ///
 /// Usage: <c>using (Fonts.Title.Push()) { ... }</c>. Before Initialize (never in practice) the
 /// accessors throw. A handle that is still building pushes nothing (the current font stays), so
@@ -30,7 +29,6 @@ internal static class Fonts
     public const float BodyPx = 16f;      // regular: default for everything
     public const float SmallPx = 14f;     // regular: help, chips
     public const float IconPx = 16f;      // FontAwesome
-    public const float IconLargePx = 20f; // FontAwesome
 
     /// <summary>Text size presets offered in Settings (multipliers on the base sizes).</summary>
     public static readonly float[] ScalePresets = { 0.9f, 1.0f, 1.15f, 1.3f, 1.5f };
@@ -44,8 +42,21 @@ internal static class Fonts
     /// <summary>The largest Axis size Dalamud ships; asking for more fails the whole handle.</summary>
     private const float MaxGameGlyphPx = 36f;
 
-    private static IFontHandle? display, title, label, body, small, icon, iconLarge;
-    private static readonly List<IFontHandle> Owned = new();
+    /// <summary>The handles of one text size, built together and disposed together.</summary>
+    private sealed record FontSet(IFontHandle Display, IFontHandle Title, IFontHandle Label, IFontHandle Body,
+                                  IFontHandle Small, IFontHandle Icon) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var handle in new[] { Display, Title, Label, Body, Small, Icon })
+            {
+                try { handle.Dispose(); }
+                catch (Exception ex) { Kit.Log?.Warning($"Font handle dispose failed: {ex.Message}"); }
+            }
+        }
+    }
+
+    private static FontSet? set;
     private static byte[]? regularBytes, mediumBytes;
 
     /// <summary>
@@ -82,25 +93,31 @@ internal static class Fonts
         0,
     };
 
-    public static IFontHandle Display => display ?? throw NotReady();
-    public static IFontHandle Title => title ?? throw NotReady();
-    public static IFontHandle Label => label ?? throw NotReady();
-    public static IFontHandle Body => body ?? throw NotReady();
-    public static IFontHandle Small => small ?? throw NotReady();
-    public static IFontHandle Icon => icon ?? throw NotReady();
-    public static IFontHandle IconLarge => iconLarge ?? throw NotReady();
+    public static IFontHandle Display => (set ?? throw NotReady()).Display;
+    public static IFontHandle Title => (set ?? throw NotReady()).Title;
+    public static IFontHandle Label => (set ?? throw NotReady()).Label;
+    public static IFontHandle Body => (set ?? throw NotReady()).Body;
+    public static IFontHandle Small => (set ?? throw NotReady()).Small;
+    public static IFontHandle Icon => (set ?? throw NotReady()).Icon;
 
-    public static bool IsInitialized => body != null;
-
-    /// <summary>Creates every handle in one go (one atlas build). Safe to call twice.</summary>
+    /// <summary>
+    /// Creates every handle in one go (one atlas build). Called again (Kit initialized twice), it only asks for
+    /// <paramref name="scale"/> like <see cref="RequestScale"/>.
+    /// </summary>
     public static void Initialize(IUiBuilder uiBuilder, float scale = 1f)
     {
-        if (IsInitialized) return;
+        if (set != null)
+        {
+            RequestScale(scale);
+            return;
+        }
         builder = uiBuilder;
-        Build(ClampScale(scale));
+        scale = ClampScale(scale);
+        set = Build(uiBuilder.FontAtlas, scale);
+        Scale = scale;
     }
 
-    public static float ClampScale(float scale) => float.IsFinite(scale) ? Math.Clamp(scale, 0.75f, 2f) : 1f;
+    private static float ClampScale(float scale) => float.IsFinite(scale) ? Math.Clamp(scale, 0.75f, 2f) : 1f;
 
     /// <summary>
     /// Requests new text size. Handles are rebuilt at the start of the next frame
@@ -109,69 +126,83 @@ internal static class Fonts
     public static void RequestScale(float scale)
     {
         scale = ClampScale(scale);
-        if (Math.Abs(scale - Scale) > 0.001f)
-            pendingScale = scale;
+        pendingScale = Math.Abs(scale - Scale) > 0.001f ? scale : null;
     }
 
-    /// <summary>Call before any font is pushed this frame (window PreDraw).</summary>
+    /// <summary>
+    /// Kit's frame hook, before any window pushes a font: builds the requested size, then swaps it in and disposes the
+    /// old handles. If the build fails the old size stays (and the error is logged).
+    /// </summary>
     public static void ApplyPendingScale()
     {
-        if (pendingScale is not { } scale || builder == null) return;
+        if (pendingScale is not { } scale || builder == null || set == null)
+            return;
         pendingScale = null;
-        DisposeHandles();
-        Build(scale);
+        try
+        {
+            var next = Build(builder.FontAtlas, scale);
+            var old = set;
+            set = next;
+            Scale = scale;
+            old.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Kit.Log?.Error(ex, $"Couldn't build fonts at {scale:0.##}x text size; keeping {Scale:0.##}x.");
+        }
     }
 
-    private static void Build(float scale)
+    /// <summary>Makes every handle; on failure disposes the ones already made and rethrows.</summary>
+    private static FontSet Build(IFontAtlas atlas, float scale)
     {
-        Scale = scale;
-        var atlas = builder!.FontAtlas;
-        display = Text(atlas, DisplayPx * scale, semibold: true);
-        title = Text(atlas, TitlePx * scale, semibold: true);
-        label = Text(atlas, LabelPx * scale, semibold: true);
-        body = Text(atlas, BodyPx * scale, semibold: false);
-        small = Text(atlas, SmallPx * scale, semibold: false);
-        icon = IconFont(atlas, IconPx * scale);
-        iconLarge = IconFont(atlas, IconLargePx * scale);
+        var made = new List<IFontHandle>(6);
+        IFontHandle Keep(IFontHandle handle)
+        {
+            made.Add(handle);
+            return handle;
+        }
+
+        try
+        {
+            return new FontSet(
+                Keep(Text(atlas, DisplayPx * scale, semibold: true)),
+                Keep(Text(atlas, TitlePx * scale, semibold: true)),
+                Keep(Text(atlas, LabelPx * scale, semibold: true)),
+                Keep(Text(atlas, BodyPx * scale, semibold: false)),
+                Keep(Text(atlas, SmallPx * scale, semibold: false)),
+                Keep(IconFont(atlas, IconPx * scale)));
+        }
+        catch
+        {
+            foreach (var handle in made)
+                handle.Dispose();
+            throw;
+        }
     }
 
     public static void Dispose()
     {
-        DisposeHandles();
+        set?.Dispose();
+        set = null;
         builder = null;
-    }
-
-    private static void DisposeHandles()
-    {
-        foreach (var handle in Owned)
-        {
-            try { handle.Dispose(); }
-            catch (Exception ex) { Kit.Log?.Warning($"Font handle dispose failed: {ex.Message}"); }
-        }
-        Owned.Clear();
-        display = title = label = body = small = icon = iconLarge = null;
+        pendingScale = null;
+        Scale = 1f;
     }
 
     private static IFontHandle Text(IFontAtlas atlas, float px, bool semibold)
     {
         var bytes = Typeface(semibold);
-        var handle = atlas.NewDelegateFontHandle(tk => tk.OnPreBuild(pre =>
+        return atlas.NewDelegateFontHandle(tk => tk.OnPreBuild(pre =>
         {
             var face = pre.AddFontFromMemory(bytes, new SafeFontConfig { SizePx = px, GlyphRanges = RobotoGlyphs }, "Roboto");
             pre.AddGameGlyphs(new GameFontStyle(GameFontFamily.Axis, MathF.Min(px, MaxGameGlyphPx)),
                 GameFallbackGlyphs, face);
         }));
-        Owned.Add(handle);
-        return handle;
     }
 
     private static IFontHandle IconFont(IFontAtlas atlas, float px)
-    {
-        var handle = atlas.NewDelegateFontHandle(tk => tk.OnPreBuild(pre =>
+        => atlas.NewDelegateFontHandle(tk => tk.OnPreBuild(pre =>
             pre.AddFontAwesomeIconFont(new SafeFontConfig { SizePx = px })));
-        Owned.Add(handle);
-        return handle;
-    }
 
     /// <summary>Embedded Roboto bytes (phys1ksUI.props embeds them as phys1ksUI.Fonts.Roboto-*.ttf).</summary>
     private static byte[] Typeface(bool semibold)
@@ -179,14 +210,10 @@ internal static class Fonts
         ref var slot = ref semibold ? ref mediumBytes : ref regularBytes;
         if (slot != null) return slot;
 
-        var suffix = semibold ? "Fonts.Roboto-Medium.ttf" : "Fonts.Roboto-Regular.ttf";
-        var assembly = typeof(Fonts).Assembly;
-        var name = assembly.GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"Embedded font {suffix} is missing from the assembly.");
-
-        using var stream = assembly.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException($"Embedded font {name} could not be opened.");
+        // Exact names (phys1ksUI.props sets them), so a plugin's own copy of Roboto can never be picked instead.
+        var name = semibold ? "phys1ksUI.Fonts.Roboto-Medium.ttf" : "phys1ksUI.Fonts.Roboto-Regular.ttf";
+        using var stream = typeof(Fonts).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"Embedded font {name} is missing: import phys1ksUI.props.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         return slot = buffer.ToArray();

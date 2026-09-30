@@ -47,9 +47,21 @@ internal static class Kit
         Fonts.Initialize(pluginInterface.UiBuilder, textScale);
         // Before the plugin's own Draw handler (it subscribes after this), so it runs ahead of every window.
         if (uiBuilder != null)
-            uiBuilder.Draw -= Modal.BeginFrame; // initialized twice: don't hook twice
+            uiBuilder.Draw -= BeginFrame; // initialized twice: don't hook twice
         uiBuilder = pluginInterface.UiBuilder;
-        uiBuilder.Draw += Modal.BeginFrame;
+        uiBuilder.Draw += BeginFrame;
+    }
+
+    /// <summary>
+    /// Once per frame before any window draws (every window, not only <see cref="KitWindow"/>s): applies a text size
+    /// asked for last frame (fonts are never rebuilt while pushed), resets card state a throw may have left behind,
+    /// and puts ImGui's modal dim back if no modal of ours is open.
+    /// </summary>
+    private static void BeginFrame()
+    {
+        Fonts.ApplyPendingScale();
+        W.ResetFrame();
+        Modal.BeginFrame();
     }
 
     /// <summary>Dalamud's "reduce motion" setting: animations jump straight to their end.</summary>
@@ -58,7 +70,7 @@ internal static class Kit
     public static void Dispose()
     {
         if (uiBuilder != null)
-            uiBuilder.Draw -= Modal.BeginFrame;
+            uiBuilder.Draw -= BeginFrame;
         uiBuilder = null;
         Modal.RestoreDim();
         Fonts.Dispose();

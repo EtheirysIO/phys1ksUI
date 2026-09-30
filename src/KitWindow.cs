@@ -72,7 +72,6 @@ internal abstract class KitWindow : Window
         this.brandIcon = brandIcon;
         this.minimumSize = minimumSize;
         version = VersionLabel(GetType());
-        SizeConstraints = new WindowSizeConstraints { MinimumSize = minimumSize, MaximumSize = new Vector2(float.MaxValue) };
     }
 
     /// <summary>"v1.2.3" from the plugin assembly (trailing .0 revision dropped).</summary>
@@ -101,8 +100,11 @@ internal abstract class KitWindow : Window
     /// <summary>The saved accent (read every frame, so a change in Settings shows at once).</summary>
     protected abstract AccentColor Accent { get; }
 
-    /// <summary>The saved colorblind mode (read every frame, like <see cref="Accent"/>).</summary>
-    protected virtual bool Colorblind => false;
+    /// <summary>
+    /// The saved colorblind mode (read every frame, like <see cref="Accent"/>). Required: a default would undo the mode
+    /// <see cref="Appearance.DrawCard"/> just set, every frame.
+    /// </summary>
+    protected abstract bool Colorblind { get; }
 
     /// <summary>The big title in the header strip.</summary>
     protected abstract string PageTitle { get; }
@@ -146,7 +148,6 @@ internal abstract class KitWindow : Window
     {
         Theme.SetAccent(Accent);
         Theme.SetColorblind(Colorblind);
-        Fonts.ApplyPendingScale(); // before anything pushes a font this frame
         ApplyCollapse();
         themeScope = Theme.Push();
         // Full-bleed: the shell lays out its own padding.
@@ -232,17 +233,20 @@ internal abstract class KitWindow : Window
             lastDrawError = null;
     }
 
-    private string? lastDrawError;
+    private (Type Type, string Message, System.Reflection.MethodBase? Site)? lastDrawError;
     private bool drawFailed;
 
-    /// <summary>A draw that throws throws every frame: log each distinct error once, not 60 times a second.</summary>
+    /// <summary>
+    /// A draw that throws throws every frame: log each distinct error once, not 60 times a second. Errors are told apart
+    /// by type, message and throwing method (cheap; no stack trace is built per frame).
+    /// </summary>
     private void ReportDrawError(Exception ex)
     {
         drawFailed = true;
-        var message = ex.ToString();
-        if (message == lastDrawError)
+        var key = (ex.GetType(), ex.Message, ex.TargetSite);
+        if (lastDrawError == key)
             return;
-        lastDrawError = message;
+        lastDrawError = key;
         Kit.Log?.Error(ex, $"{brand} window draw failed");
     }
 

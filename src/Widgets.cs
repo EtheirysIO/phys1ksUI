@@ -73,8 +73,7 @@ internal static partial class W
         var id = string.IsNullOrEmpty(label) ? "##btn" : label;
 
         var req = size ?? Vector2.Zero;
-        float avail = ImGui.GetContentRegionAvail().X;
-        float w = req.X > 0 ? req.X : req.X < 0 ? MathF.Max(1f, avail + req.X) : ButtonWidth(label, icon);
+        float w = req.X > 0 ? req.X : req.X < 0 ? MathF.Max(1f, Avail() + req.X) : ButtonWidth(label, icon);
         float h = req.Y > 0 ? req.Y : Theme.Space.ButtonHeight;
 
         var p = ImGui.GetCursorScreenPos();
@@ -345,7 +344,7 @@ internal static partial class W
             }
             else
             {
-                trackW = width < 0 ? MathF.Max(count * Theme.S(24f), ImGui.GetContentRegionAvail().X) : width;
+                trackW = width < 0 ? MathF.Max(count * Theme.S(24f), Avail()) : width;
                 float even = (trackW - pad * 2f) / count;
                 for (int i = 0; i < count; i++) segW[i] = even;
             }
@@ -442,6 +441,12 @@ internal static partial class W
     /// <summary>Available width at the cursor, minus the right padding of any enclosing cards.</summary>
     public static float Avail() => MathF.Max(1f, ImGui.GetContentRegionAvail().X - (tableDepth > 0 ? 0f : cardRightPad));
 
+    /// <summary>An input's byte budget (UTF-8: CJK takes 3 per character), kept sane: 1..65536.</summary>
+    private static int ClampLength(int maxLength) => Math.Clamp(maxLength, 1, 65536);
+
+    /// <summary>The inputs' width convention: &gt; 0 is that width; &lt;= 0 fills <see cref="Avail"/> (plus width), at least <paramref name="min"/>.</summary>
+    private static float FillWidth(float width, float min) => width > 0f ? width : MathF.Max(min, Avail() + width);
+
     private sealed class CardScope : IDisposable
     {
         private readonly ImDrawListPtr dl;
@@ -459,7 +464,7 @@ internal static partial class W
             dl = ImGui.GetWindowDrawList();
             pad = Theme.Space.CardPad;
             min = ImGui.GetCursorScreenPos();
-            width = MathF.Max(1f, ImGui.GetContentRegionAvail().X - cardRightPad);
+            width = Avail();
 
             split = cardDepth == 0;
             if (split)
@@ -665,12 +670,15 @@ internal static partial class W
             ImGui.TextColored(Theme.Dim, subtitle);
     }
 
-    /// <summary>Small "?" circle in Faint; its tooltip wraps at 22em.</summary>
-    public static void HelpMark(string text)
+    /// <summary>
+    /// Small "?" circle in Faint; its tooltip wraps at 22em. Its ID is the text: pass <paramref name="id"/> when the same
+    /// text appears twice in one window.
+    /// </summary>
+    public static void HelpMark(string text, string? id = null)
     {
         float side = MathF.Round(ImGui.GetTextLineHeight());
         var p = ImGui.GetCursorScreenPos();
-        ImGui.PushID(text);
+        ImGui.PushID(id ?? text);
         ImGui.InvisibleButton("##help", new Vector2(side, side));
         ImGui.PopID();
         bool hovered = ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled);
@@ -847,15 +855,17 @@ internal static partial class W
         float budget = maxWidth - ImGui.CalcTextSize(ellipsis).X;
         if (budget <= 0) return ellipsis;
 
-        // Binary search the longest prefix that fits.
+        // Binary search the longest prefix that fits (measured as spans: no string per step).
         int lo = 0, hi = text.Length - 1;
         while (lo < hi)
         {
             int mid = (lo + hi + 1) / 2;
-            if (ImGui.CalcTextSize(text.Substring(0, mid)).X <= budget) lo = mid;
+            if (ImGui.CalcTextSize(text.AsSpan(0, mid)).X <= budget) lo = mid;
             else hi = mid - 1;
         }
-        return lo <= 0 ? ellipsis : text.Substring(0, lo).TrimEnd() + ellipsis;
+        if (lo > 0 && char.IsHighSurrogate(text[lo - 1]))
+            lo--; // never split a surrogate pair
+        return lo <= 0 ? ellipsis : string.Concat(text.AsSpan(0, lo).TrimEnd(), ellipsis);
     }
 
     // ───────────────────────── Inputs ─────────────────────────
@@ -871,8 +881,7 @@ internal static partial class W
         try
         {
             float h = ImGui.GetFrameHeight();
-            float avail = ImGui.GetContentRegionAvail().X;
-            float w = width > 0 ? width : MathF.Max(h * 3f, avail + width);
+            float w = FillWidth(width, h * 3f);
             var p = ImGui.GetCursorScreenPos();
             var dl = ImGui.GetWindowDrawList();
 
@@ -896,7 +905,7 @@ internal static partial class W
                        .Color(ImGuiCol.FrameBgActive, Theme.Transparent)
                        .Var(ImGuiStyleVar.FramePadding, new Vector2(Theme.S(8f), ImGui.GetStyle().FramePadding.Y)))
             {
-                changed = ImGui.InputTextWithHint("##input", hint, ref text, maxLength);
+                changed = ImGui.InputTextWithHint("##input", hint, ref text, ClampLength(maxLength));
             }
             bool active = ImGui.IsItemActive();
             bool hovered = ImGui.IsItemHovered();
@@ -950,11 +959,11 @@ internal static partial class W
     public static bool TextInput(string id, ref string text, string hint, float width, int maxLength = 256, bool error = false,
         ImGuiInputTextFlags flags = ImGuiInputTextFlags.None)
     {
-        float w = width > 0 ? width : MathF.Max(ImGui.GetFrameHeight() * 3f, Avail() + width);
+        float w = FillWidth(width, ImGui.GetFrameHeight() * 3f);
         ImGui.SetNextItemWidth(w);
         bool changed;
         using (error ? new Theme.StyleScope().Color(ImGuiCol.FrameBg, Theme.Negative with { W = 0.10f }) : null)
-            changed = ImGui.InputTextWithHint(id, hint, ref text, maxLength, flags);
+            changed = ImGui.InputTextWithHint(id, hint, ref text, ClampLength(maxLength), flags);
         if (error)
             ImGui.GetWindowDrawList().AddRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), Theme.U32(Theme.Negative with { W = 0.7f }),
                 Theme.Radius.Control, ImDrawFlags.None, Theme.S(1f));
@@ -1022,25 +1031,37 @@ internal static partial class W
 
     private static uint GetItemIconId(uint itemId)
     {
-        // Normalise HQ (+1,000,000) and collectable (+500,000) encodings to the base row id.
-        uint baseId = itemId >= 1_000_000 ? itemId - 1_000_000 : itemId >= 500_000 ? itemId - 500_000 : itemId;
+        // Event (key) items live in their own sheet from 2,000,000 up; below that, HQ (+1,000,000) and collectable
+        // (+500,000) encodings normalise to the base Item row.
+        uint baseId = itemId >= 2_000_000 ? itemId
+            : itemId >= 1_000_000 ? itemId - 1_000_000
+            : itemId >= 500_000 ? itemId - 500_000
+            : itemId;
         if (IconIdCache.TryGetValue(baseId, out var cached)) return cached;
+        if (Kit.Data is not { } data)
+            return 0; // not initialized yet: don't remember "no icon"
 
         uint iconId = 0;
-        var sheet = Kit.Data?.GetExcelSheet<Lumina.Excel.Sheets.Item>();
-        if (sheet != null && sheet.TryGetRow(baseId, out var row))
+        if (baseId >= 2_000_000)
+        {
+            if (data.GetExcelSheet<Lumina.Excel.Sheets.EventItem>().TryGetRow(baseId, out var eventRow))
+                iconId = eventRow.Icon;
+        }
+        else if (data.GetExcelSheet<Lumina.Excel.Sheets.Item>().TryGetRow(baseId, out var row))
+        {
             iconId = row.Icon;
+        }
         IconIdCache[baseId] = iconId;
         return iconId;
     }
 
     // ───────────────────────── Shared drawing helpers ─────────────────────────
 
-    /// <summary>Draws a FontAwesome glyph (the icon font, or the large one) centered in a rect.</summary>
-    public static void DrawGlyphCentered(ImDrawListPtr dl, FontAwesomeIcon icon, Vector2 min, Vector2 size, Vector4 color, bool large = false)
+    /// <summary>Draws a FontAwesome glyph (the icon font) centered in a rect.</summary>
+    public static void DrawGlyphCentered(ImDrawListPtr dl, FontAwesomeIcon icon, Vector2 min, Vector2 size, Vector4 color)
     {
         string glyph = Glyph(icon);
-        using ((large ? Fonts.IconLarge : Fonts.Icon).Push())
+        using (Fonts.Icon.Push())
         {
             var gs = ImGui.CalcTextSize(glyph);
             dl.AddText(new Vector2(MathF.Round(min.X + (size.X - gs.X) * 0.5f), MathF.Round(min.Y + (size.Y - gs.Y) * 0.5f)),

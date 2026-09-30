@@ -14,8 +14,8 @@ internal static partial class W
     private static int tableDepth;
 
     /// <summary>
-    /// Called by <see cref="KitWindow"/> at the start of each frame: if a draw threw mid-card last frame, the card nesting
-    /// would otherwise stay off for good (every card drawn as an outline).
+    /// Called at the start of each frame (Kit's frame hook) and of each <see cref="KitWindow"/>: if a draw threw mid-card,
+    /// the card nesting would otherwise stay off for good (every card drawn as an outline).
     /// </summary>
     internal static void ResetFrame()
     {
@@ -200,9 +200,10 @@ internal static partial class W
 
     /// <summary>
     /// A tinted notice with a colored left edge (a message, a warning), optionally led by an <paramref name="icon"/> in the
-    /// same color. With <paramref name="dismissable"/> it has an ✕; returns true when that was clicked.
+    /// same color. With <paramref name="dismissable"/> it has an ✕; returns true when that was clicked. The ✕'s ID is the
+    /// text: pass <paramref name="id"/> when two dismissable banners can show the same text.
     /// </summary>
-    public static bool Banner(string text, Vector4 color, bool dismissable = false, FontAwesomeIcon? icon = null)
+    public static bool Banner(string text, Vector4 color, bool dismissable = false, FontAwesomeIcon? icon = null, string? id = null)
     {
         var p = ImGui.GetCursorScreenPos();
         var width = Avail();
@@ -229,7 +230,7 @@ internal static partial class W
         {
             var at = new Vector2(p.X + width - closeW - Theme.S(6f), p.Y + (size.Y - closeW) * 0.5f);
             ImGui.SetCursorScreenPos(at);
-            ImGui.PushID(text);
+            ImGui.PushID(id ?? text);
             dismissed = ImGui.InvisibleButton("##dismiss", new Vector2(closeW, closeW));
             ImGui.PopID();
             var hot = ImGui.IsItemHovered();
@@ -476,10 +477,11 @@ internal static partial class W
                 continue;
             }
             using (Fonts.Label.Push())
+            using (new Theme.StyleScope().Color(ImGuiCol.Text, Theme.Slate))
             {
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Slate);
+                ImGui.PushID(c); // like TableHeadersRow: columns with the same (or no) name keep their own hover and sort
                 ImGui.TableHeader(ImGui.TableGetColumnName(c));
-                ImGui.PopStyleColor();
+                ImGui.PopID();
             }
         }
         return result;
@@ -544,7 +546,7 @@ internal static partial class W
     public static ComboScope Combo(string id, string preview, float width, float height = 0f)
     {
         float h = height > 0f ? height : ImGui.GetFrameHeight();
-        float w = width > 0f ? width : MathF.Max(h * 3f, Avail() + width);
+        float w = FillWidth(width, h * 3f);
         float padY = MathF.Max(0f, (h - ImGui.GetTextLineHeight()) * 0.5f);
         var style = new Theme.StyleScope()
             .Var(ImGuiStyleVar.FramePadding, new Vector2(Theme.S(12f), padY))

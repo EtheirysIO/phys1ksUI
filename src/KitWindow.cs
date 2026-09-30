@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -221,7 +220,7 @@ internal abstract class KitWindow : Window
         {
             DrawShell();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (KitRecovery.Catch())
         {
             // Whatever the draw left open (child windows, popups, tables, IDs, style pushes) is closed back to this
             // window, so Dalamud's End() and PostDraw's pops match.
@@ -299,7 +298,7 @@ internal abstract class KitWindow : Window
                 if (bodyVisible)
                     DrawPageWithReveal();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (KitRecovery.Catch())
             {
                 // Close what the page left open back to the body, so EndChild ends the body; the header, sidebar and
                 // overlays still draw, and the page shows the error in place of its rest.
@@ -459,7 +458,7 @@ internal abstract class KitWindow : Window
             if (visible)
                 DrawSidebarNav();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (KitRecovery.Catch())
         {
             KitRecovery.RecoverTo(navId);
             ReportDrawError(ex);
@@ -670,54 +669,4 @@ internal abstract class KitWindow : Window
             return "v?";
         return v.Revision > 0 ? $"v{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"v{v.Major}.{v.Minor}.{v.Build}";
     }
-}
-
-/// <summary>
-/// Puts ImGui's stacks back after a draw threw part-way: ends the child windows, popups and tooltips the draw left open
-/// down to a target window, and in each one closes tables, tab bars, tree nodes, groups, disabled blocks and pops IDs,
-/// style colors / vars and item flags back to what they were when that window began (ImGui's own
-/// ErrorCheckEndWindowRecover). Fonts pushed without a <c>using</c> are not recovered.
-/// </summary>
-internal static class KitRecovery
-{
-    private static readonly unsafe ImGuiErrorLogCallback Log = LogRecovery;
-
-    /// <summary>Recovers to the window with <paramref name="windowId"/> (see <see cref="W.CurrentWindowId"/>); that window stays open.</summary>
-    public static void RecoverTo(uint windowId)
-    {
-        try
-        {
-            // Bounded: a window that can't be ended must not spin forever.
-            for (var guard = 0; guard < 64; guard++)
-            {
-                var window = ImGuiP.GetCurrentWindow();
-                if (window.IsNull)
-                    return;
-                var id = window.ID;
-                var flags = window.Flags;
-                ImGuiP.ErrorCheckEndWindowRecover(Log);
-                if (id == windowId || windowId == 0)
-                    return;
-                // Ending a scrolling table also ends its inner child window: then this window is already gone.
-                var after = ImGuiP.GetCurrentWindow();
-                if (after.IsNull)
-                    return;
-                if (after.ID != id)
-                    continue;
-                if ((flags & ImGuiWindowFlags.Popup) != 0)
-                    ImGui.EndPopup();
-                else if ((flags & ImGuiWindowFlags.ChildWindow) != 0)
-                    ImGui.EndChild();
-                else
-                    return; // top-level windows are ended by Dalamud's WindowSystem, never by us
-            }
-        }
-        catch (Exception ex)
-        {
-            Kit.Log?.Warning($"ImGui state recovery failed: {ex.Message}");
-        }
-    }
-
-    private static unsafe void LogRecovery(void* userData, byte* message)
-        => Kit.Log?.Verbose($"ImGui recovery: {Marshal.PtrToStringUTF8((nint)message)}");
 }

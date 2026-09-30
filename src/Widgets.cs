@@ -507,8 +507,23 @@ internal static partial class W
             cardRightPad -= pad;
             cardDepth--;
 
-            // Unwinding after an exception with a child window (or popup) the page opened still current: the pops below
-            // would hit that window's stacks. Only merge the draw list; KitWindow's recovery closes the rest.
+            if (KitRecovery.Unwinding)
+            {
+                // Recovery pops the ID and ends whatever the page left open (a raw table's own channels included); only
+                // then is it safe to undo the indent and item width and merge this card's channels.
+                var (list, indent, merge) = (dl, pad, split);
+                KitRecovery.Defer(windowId, () =>
+                {
+                    ImGui.PopItemWidth();
+                    ImGui.Unindent(indent);
+                    if (merge)
+                        list.ChannelsMerge();
+                });
+                return;
+            }
+
+            // A throw caught outside the kit left a child window (or popup) current: the pops below would hit that
+            // window's stacks. Only merge the draw list.
             if (CurrentWindowId() != windowId)
             {
                 if (split)

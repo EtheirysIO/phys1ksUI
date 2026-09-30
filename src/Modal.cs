@@ -51,23 +51,17 @@ internal static class Modal
 
         HideImGuiDim();
         PaintBackdrop();
-        var modalId = W.CurrentWindowId();
         try
         {
             using var surface = W.NewSurface(); // the modal's cards aren't nested in whatever card opened it
             DrawHeader(title, ref open);
             body();
         }
-        catch
-        {
-            // The body threw with something still open (a child, a combo, a table): close it back to the modal so
-            // EndPopup ends the modal, then let the window report the error.
-            KitRecovery.RecoverTo(modalId);
-            throw;
-        }
         finally
         {
-            ImGui.EndPopup();
+            // Unwinding to a kit catch site: its recovery ends this modal along with whatever the body left open.
+            if (!KitRecovery.Unwinding)
+                ImGui.EndPopup();
         }
     }
 

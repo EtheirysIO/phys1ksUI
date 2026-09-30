@@ -156,10 +156,12 @@ internal static partial class W
                 return;
             disposed = true;
 
-            if (CurrentWindowId() != windowId)
+            if (KitRecovery.Unwinding || CurrentWindowId() != windowId)
             {
-                // Unwinding an exception inside a child window the page left open: popping the clip rect here would
-                // hit that window. Pop the fade (style vars are global) and let the card and KitWindow recover the rest.
+                // A throw with something still open: popping the clip rect now could hit another window. Recovery pops
+                // it once this window is current again; the fade and the card handle unwinding themselves.
+                if (animating && KitRecovery.Unwinding)
+                    KitRecovery.Defer(windowId, ImGui.PopClipRect);
                 fade?.Dispose();
                 card.Dispose();
                 return;
@@ -392,9 +394,9 @@ internal static partial class W
                 return;
             disposed = true;
             tableDepth--;
-            // Unwinding an exception inside a child window a cell opened: that window is current, not this table, and
-            // EndTable would end the wrong thing. KitWindow's recovery ends the table instead.
-            if (CurrentTableId() == tableId)
+            // Unwinding (recovery ends the table), or a child window a cell opened is current, not this table: EndTable
+            // would end the wrong thing.
+            if (!KitRecovery.Unwinding && CurrentTableId() == tableId)
                 ImGui.EndTable();
         }
     }
@@ -559,11 +561,11 @@ internal static partial class W
         var open = ImGui.BeginCombo(id, preview);
         if (!open && ImGui.IsItemHovered()) // while open, the popup is the current window
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        return new ComboScope(open, style);
+        return new ComboScope(open, open ? CurrentWindowId() : 0u, style);
     }
 
     /// <summary>An open <see cref="Combo"/>: draw the items only if <see cref="Open"/>; disposing ends it.</summary>
-    public sealed class ComboScope(bool open, IDisposable style) : IDisposable
+    public sealed class ComboScope(bool open, uint popupId, IDisposable style) : IDisposable
     {
         private bool disposed;
 
@@ -574,7 +576,9 @@ internal static partial class W
             if (disposed)
                 return;
             disposed = true;
-            if (Open)
+            // Only end the combo's own popup: while unwinding, or with a child an item opened still current, EndCombo
+            // would end the wrong window (recovery ends the popup instead).
+            if (Open && !KitRecovery.Unwinding && CurrentWindowId() == popupId)
                 ImGui.EndCombo();
             style.Dispose();
         }

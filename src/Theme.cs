@@ -369,6 +369,8 @@ internal static class Theme
         {
             if (disposed) return;
             disposed = true;
+            if (KitRecovery.Unwinding)
+                return; // the catch site's recovery pops style back to its window's start
             if (vars > 0) ImGui.PopStyleVar(vars);
             if (colors > 0) ImGui.PopStyleColor(colors);
         }

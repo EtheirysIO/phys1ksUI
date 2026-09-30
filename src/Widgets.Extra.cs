@@ -147,7 +147,7 @@ internal static partial class W
                 fade = new Theme.StyleScope().Var(ImGuiStyleVar.Alpha, MathF.Max(0.001f, progress * ImGui.GetStyle().Alpha));
             }
             if (progress > 0f)
-                ImGui.Dummy(new Vector2(0f, MathF.Max(0f, Theme.S(4f) - ImGui.GetStyle().ItemSpacing.Y)));
+                Gap(4f);
         }
 
         public void Dispose()
@@ -310,7 +310,7 @@ internal static partial class W
         var p = ImGui.GetCursorScreenPos();
         var w = Avail();
         var thickness = Theme.S(1f);
-        ImGui.GetWindowDrawList().AddRectFilled(p, new Vector2(p.X + w, p.Y + thickness), Theme.U32(Theme.RuleHair));
+        Hairline(ImGui.GetWindowDrawList(), p, new Vector2(p.X + w, p.Y + thickness));
         ImGui.Dummy(new Vector2(w, thickness));
         if (space > 0f)
             ImGui.Dummy(new Vector2(0f, space));
@@ -334,26 +334,17 @@ internal static partial class W
     {
         ImGui.TextColored(Theme.Link, text);
         var hovered = ImGui.IsItemHovered();
-        if (!hovered)
-            return false;
-        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        if (tooltip != null)
-            Tooltip(tooltip);
-        return ImGui.IsItemClicked(ImGuiMouseButton.Left);
+        HoverFeedback(hovered, tooltip);
+        return hovered && ImGui.IsItemClicked(ImGuiMouseButton.Left);
     }
 
-    /// <summary>A big figure (Title font) over a small tracked-caps caption.</summary>
+    /// <summary>A big figure (Display font) over a small tracked-caps caption (<see cref="Heading"/>).</summary>
     public static void Stat(string value, string caption, Vector4? color = null)
     {
         ImGui.BeginGroup();
         using (Fonts.Display.Push())
             ImGui.TextColored(color ?? Theme.Ink, value);
-        using (Fonts.Label.Push())
-        {
-            var p = ImGui.GetCursorScreenPos();
-            var w = TrackedCaps(ImGui.GetWindowDrawList(), p, caption, Theme.Slate);
-            ImGui.Dummy(new Vector2(w, ImGui.GetTextLineHeight()));
-        }
+        Heading(caption);
         ImGui.EndGroup();
     }
 
@@ -681,7 +672,7 @@ internal static partial class W
                 dl.AddText(new Vector2(textX, top + lineH), Theme.U32(Theme.Lerp(Theme.Faint, Theme.OnAccent with { W = 0.8f }, on) with { W = ink.W * (on > 0.5f ? 0.8f : 1f) }), Fit(subtitle, maxW));
         }
 
-        ImGui.Dummy(new Vector2(0f, MathF.Max(0f, Theme.S(4f) - ImGui.GetStyle().ItemSpacing.Y)));
+        Gap(4f);
         return clicked && enabled;
     }
 }

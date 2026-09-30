@@ -355,8 +355,7 @@ internal abstract class KitWindow : Window
     {
         var dl = ImGui.GetWindowDrawList();
         var max = new Vector2(min.X + width, min.Y + height);
-        dl.AddRectFilled(min, max, Theme.U32(Theme.Panel), Theme.Radius.Window);
-        dl.AddRect(min, max, Theme.U32(Theme.CardBorder), Theme.Radius.Window, ImDrawFlags.None, Theme.S(1f));
+        W.DrawPanel(dl, min, max);
 
         var gutter = Theme.Space.Gutter;
         var button = Theme.S(28f);
@@ -379,7 +378,7 @@ internal abstract class KitWindow : Window
         if (op != null)
         {
             // Pulsing dot, "Buying · detail", and the progress bar on the right if there is one.
-            dl.AddCircleFilled(new Vector2(x + Theme.S(4f), midY), Theme.S(4f), Theme.U32(Theme.Accent with { W = Motion.Pulse() }), 16);
+            W.StatusDot(dl, new Vector2(x + Theme.S(4f), midY), Theme.Accent, pulse: true);
             var textX = x + Theme.S(16f);
             if (op.Fraction is { } fraction)
             {
@@ -434,15 +433,14 @@ internal abstract class KitWindow : Window
         var dl = ImGui.GetWindowDrawList();
         var max = min + size;
         dl.AddRectFilled(min, max, Theme.U32(Theme.Panel), Theme.Radius.Window, ImDrawFlags.RoundCornersLeft);
-        dl.AddRectFilled(new Vector2(max.X - Theme.S(1f), min.Y), max, Theme.U32(Theme.RuleHair));
+        W.Hairline(dl, new Vector2(max.X - Theme.S(1f), min.Y), max);
 
         var gutter = Theme.Space.Gutter;
         var headerH = Theme.Space.HeaderHeight;
         var innerW = size.X - gutter * 2f - Theme.S(1f);
 
         DrawBrand(dl, new Vector2(min.X + gutter, min.Y + (headerH - Theme.S(30f)) * 0.5f));
-        dl.AddRectFilled(new Vector2(min.X, min.Y + headerH), new Vector2(max.X - Theme.S(1f), min.Y + headerH + Theme.S(1f)),
-                         Theme.U32(Theme.RuleHair));
+        W.Hairline(dl, new Vector2(min.X, min.Y + headerH), new Vector2(max.X - Theme.S(1f), min.Y + headerH + Theme.S(1f)));
 
         var op = GetRunningOperation();
         var lines = GetStatusLines();
@@ -545,7 +543,7 @@ internal abstract class KitWindow : Window
         var x = p.X;
         var y = p.Y;
 
-        dl.AddRectFilled(new Vector2(x - gutter, y), new Vector2(x + width + gutter, y + Theme.S(1f)), Theme.U32(Theme.RuleHair));
+        W.Hairline(dl, new Vector2(x - gutter, y), new Vector2(x + width + gutter, y + Theme.S(1f)));
         y += gutter;
 
         if (op != null)
@@ -618,7 +616,7 @@ internal abstract class KitWindow : Window
         var dl = ImGui.GetWindowDrawList();
         var max = new Vector2(min.X + width, min.Y + height);
         dl.AddRectFilled(min, max, Theme.U32(Theme.Panel), Theme.Radius.Window, ImDrawFlags.RoundCornersTopRight);
-        dl.AddRectFilled(new Vector2(min.X, max.Y), new Vector2(max.X, max.Y + Theme.S(1f)), Theme.U32(Theme.RuleHair));
+        W.Hairline(dl, new Vector2(min.X, max.Y), new Vector2(max.X, max.Y + Theme.S(1f)));
 
         var closeSize = Theme.S(28f);
         var closePos = new Vector2(max.X - Theme.S(16f) - closeSize, min.Y + (height - closeSize) * 0.5f);

@@ -41,6 +41,12 @@ internal static class Theme
     /// </summary>
     public static Vector4 Wash(float alpha) => new(1f, 1f, 1f, alpha);
 
+    /// <summary>
+    /// <paramref name="c"/> with its alpha multiplied by <paramref name="mul"/>: a disabled widget's colors
+    /// (<c>Theme.Fade(ink, 0.4f)</c>), a pulse, a fade-in.
+    /// </summary>
+    public static Vector4 Fade(Vector4 c, float mul) => c with { W = c.W * mul };
+
     /// <summary>A black shade at <paramref name="alpha"/>: drop shadows (0.07 per card layer, 0.35 under the brand tile) and scrims.</summary>
     public static Vector4 Shadow(float alpha) => new(0f, 0f, 0f, alpha);
 
@@ -55,8 +61,6 @@ internal static class Theme
     // One path computes an accent's shades, so the default looks the same as picking it again later.
     static Theme() => ApplyAccent(AccentColor.Orange);
 
-    /// <summary>The accent the UI currently draws with.</summary>
-    public static AccentColor CurrentAccent => currentAccent;
     public static Vector4 Accent => accent;
     public static Vector4 AccentHover => accentHover;
     public static Vector4 AccentPressed => accentPressed;
@@ -209,13 +213,6 @@ internal static class Theme
     }
 
     public static Vector4 Lerp(Vector4 a, Vector4 b, float t) => Vector4.Lerp(a, b, Math.Clamp(t, 0f, 1f));
-
-    /// <summary>Smoothstep easing.</summary>
-    public static float Ease(float t)
-    {
-        t = Math.Clamp(t, 0f, 1f);
-        return t * t * (3f - 2f * t);
-    }
 
     /// <summary>Blend towards white in linear light (keeps hue).</summary>
     public static Vector4 Lighten(Vector4 c, float amount) => MixLinear(c, 1f, amount);

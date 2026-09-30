@@ -91,6 +91,13 @@ internal static class Motion
         return Math.Clamp((Environment.TickCount64 - startTick) / (fullMs * span), 0f, 1f);
     }
 
+    /// <summary>Smoothstep (0..1, clamped): gentle at both ends. The toggle's knob and track.</summary>
+    public static float EaseSmooth(float t)
+    {
+        t = Math.Clamp(t, 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
     public static float EaseInOutCubic(float t) => t < 0.5f ? 4f * t * t * t : 1f - MathF.Pow(-2f * t + 2f, 3f) * 0.5f;
 
     public static float EaseOutCubic(float t)

@@ -111,8 +111,7 @@ internal static class Modal
 
         dl.PushClipRect(viewport.Pos, viewport.Pos + viewport.Size, false);
         dl.AddRectFilled(viewport.Pos, viewport.Pos + viewport.Size, Theme.U32(Scrim));
-        dl.AddRectFilled(winPos, winMax, Theme.U32(Theme.Panel), Theme.Radius.Window);
-        dl.AddRect(winPos, winMax, Theme.U32(Theme.CardBorder), Theme.Radius.Window, ImDrawFlags.None, Theme.S(1f));
+        W.DrawPanel(dl, winPos, winMax);
         dl.PopClipRect();
     }
 

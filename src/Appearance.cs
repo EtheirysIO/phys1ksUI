@@ -10,7 +10,8 @@ namespace phys1ksUI;
 /// </summary>
 internal static class Appearance
 {
-    private static readonly string[] TextSizeLabels = ["90%", "100%", "115%", "130%", "150%"];
+    /// <summary>"90%", "100%"...: one label per <see cref="Fonts.ScalePresets"/> entry, so the two can't drift apart.</summary>
+    private static readonly string[] TextSizeLabels = Array.ConvertAll(Fonts.ScalePresets, p => $"{p * 100f:0}%");
 
     /// <summary>Draws the card. Returns true when something changed (save your config).</summary>
     public static bool DrawCard(ref AccentColor accent, ref float textScale, ref bool colorblind)
@@ -25,10 +26,7 @@ internal static class Appearance
             ImGui.Dummy(new Vector2(0f, Theme.Space.Gap));
             ImGui.TextColored(Theme.Dim, "Text size");
             ImGui.Dummy(new Vector2(0f, Theme.S(2f)));
-            var current = textScale;
-            var index = Array.FindIndex(Fonts.ScalePresets, p => Math.Abs(p - current) < 0.01f);
-            if (index < 0)
-                index = 1;
+            var index = PresetIndex(textScale);
             if (W.Segmented("##textSize", TextSizeLabels, ref index, Theme.S(360f)))
             {
                 textScale = Fonts.ScalePresets[index];
@@ -51,6 +49,15 @@ internal static class Appearance
                           "in /xlsettings > Look & Feel).", Theme.Faint);
         }
         return changed;
+    }
+
+    /// <summary>The preset nearest <paramref name="scale"/> (100% if none is within 1%).</summary>
+    private static int PresetIndex(float scale)
+    {
+        for (var i = 0; i < Fonts.ScalePresets.Length; i++)
+            if (Math.Abs(Fonts.ScalePresets[i] - scale) < 0.01f)
+                return i;
+        return Array.IndexOf(Fonts.ScalePresets, 1f);
     }
 
     private static bool DrawAccentSwatches(ref AccentColor accent)

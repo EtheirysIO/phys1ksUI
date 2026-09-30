@@ -30,7 +30,8 @@ internal static partial class W
     private static readonly string[] AsciiGlyphs = BuildAsciiGlyphs();
     private static readonly Dictionary<char, string> OtherGlyphs = new();
     private static readonly Dictionary<string, string> UpperCache = new(StringComparer.Ordinal);
-    private const int UpperCacheLimit = 1024;
+    private static readonly Dictionary<string, string> VisibleCache = new(StringComparer.Ordinal);
+    private const int CacheLimit = 1024;
     private static int cardDepth;
     private static float cardRightPad;
 
@@ -88,17 +89,12 @@ internal static partial class W
         float a = enabled ? 1f : DisabledAlpha;
 
         var dl = ImGui.GetWindowDrawList();
-        dl.AddRectFilled(p, p + new Vector2(w, h), Theme.U32(fill with { W = fill.W * a }), Theme.Radius.Control);
-        if (border.HasValue)
-            dl.AddRect(p, p + new Vector2(w, h), Theme.U32(border.Value with { W = border.Value.W * a }),
-                Theme.Radius.Control, ImDrawFlags.None, Theme.S(1f));
+        dl.AddRectFilled(p, p + new Vector2(w, h), Theme.U32(Theme.Fade(fill, a)), Theme.Radius.Control);
+        if (border is { } edge)
+            dl.AddRect(p, p + new Vector2(w, h), Theme.U32(Theme.Fade(edge, a)), Theme.Radius.Control, ImDrawFlags.None, Theme.S(1f));
 
-        DrawIconLabelCentered(dl, icon, text, p, new Vector2(w, h), ink with { W = ink.W * a });
-
-        if (hovered) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        if (tooltip != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            Tooltip(tooltip);
-
+        DrawIconLabelCentered(dl, icon, text, p, new Vector2(w, h), Theme.Fade(ink, a));
+        HoverFeedback(hovered, tooltip);
         return pressed && enabled;
     }
 
@@ -140,12 +136,7 @@ internal static partial class W
         var ink = Theme.Lerp(Theme.Dim, danger ? Theme.OnNegative : Theme.Ink, hot);
         dl.AddCircleFilled(pos + new Vector2(size * 0.5f), size * 0.5f, Theme.U32(fill), 32);
         DrawGlyphCentered(dl, icon, pos, new Vector2(size, size), ink);
-        if (hovered)
-        {
-            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            if (tooltip != null)
-                Tooltip(tooltip);
-        }
+        HoverFeedback(hovered, tooltip);
         return clicked;
     }
 
@@ -168,13 +159,9 @@ internal static partial class W
         Vector4 ink = Theme.Lerp(Theme.Dim, danger ? Theme.Negative : Theme.Ink, held ? 1f : hot);
 
         var dl = ImGui.GetWindowDrawList();
-        dl.AddRectFilled(p, p + new Vector2(s, s), Theme.U32(fill with { W = fill.W * a }), Theme.Radius.Small);
-        DrawGlyphCentered(dl, icon, p, new Vector2(s, s), ink with { W = ink.W * a });
-
-        if (hovered) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        if (tooltip != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            Tooltip(tooltip);
-
+        dl.AddRectFilled(p, p + new Vector2(s, s), Theme.U32(Theme.Fade(fill, a)), Theme.Radius.Small);
+        DrawGlyphCentered(dl, icon, p, new Vector2(s, s), Theme.Fade(ink, a));
+        HoverFeedback(hovered, tooltip);
         return pressed && enabled;
     }
 
@@ -189,11 +176,8 @@ internal static partial class W
         float trackW = Theme.S(34f), trackH = Theme.S(20f), knob = Theme.S(16f);
         float inset = (trackH - knob) * 0.5f;
         float h = MathF.Max(trackH, ImGui.GetFrameHeight());
-        float labelGap = Theme.S(8f);
-        float labelW = text.Length > 0 ? labelGap + ImGui.CalcTextSize(text).X : 0f;
-
         var p = ImGui.GetCursorScreenPos();
-        bool pressed = InvisibleItem(string.IsNullOrEmpty(label) ? "##toggle" : label, new Vector2(trackW + labelW, h), enabled);
+        bool pressed = InvisibleItem(string.IsNullOrEmpty(label) ? "##toggle" : label, new Vector2(trackW + TrailingLabelWidth(text), h), enabled);
         bool hovered = enabled && ImGui.IsItemHovered();
         bool changed = false;
         if (pressed && enabled)
@@ -211,37 +195,28 @@ internal static partial class W
 
         var offTrack = hovered ? Theme.Raised2 : Theme.Raised;
         var onTrack = hovered ? Theme.AccentHover : Theme.Accent;
-        var track = Theme.Lerp(offTrack, onTrack, Theme.Ease(t));
+        var eased = Motion.EaseSmooth(t);
+        var track = Theme.Lerp(offTrack, onTrack, eased);
 
         var dl = ImGui.GetWindowDrawList();
-        dl.AddRectFilled(tMin, tMax, Theme.U32(track with { W = a }), Theme.Radius.Pill);
+        dl.AddRectFilled(tMin, tMax, Theme.U32(Theme.Fade(track, a)), Theme.Radius.Pill);
         if (t < 1f)
-            dl.AddRect(tMin, tMax, Theme.U32(Theme.BorderControl with { W = (1f - t) * a }),
+            dl.AddRect(tMin, tMax, Theme.U32(Theme.Fade(Theme.BorderControl, (1f - t) * a)),
                 Theme.Radius.Pill, ImDrawFlags.None, Theme.S(1f));
 
-        float knobX = tMin.X + inset + knob * 0.5f + Theme.Ease(t) * (trackW - inset * 2f - knob);
+        float knobX = tMin.X + inset + knob * 0.5f + eased * (trackW - inset * 2f - knob);
         var knobCol = Theme.Lerp(Theme.Dim, Theme.OnAccent, t);
-        dl.AddCircleFilled(new Vector2(knobX, top + trackH * 0.5f), knob * 0.5f, Theme.U32(knobCol with { W = a }), 24);
+        dl.AddCircleFilled(new Vector2(knobX, top + trackH * 0.5f), knob * 0.5f, Theme.U32(Theme.Fade(knobCol, a)), 24);
 
-        if (text.Length > 0)
-        {
-            float lineH = ImGui.GetTextLineHeight();
-            var ink = hovered ? Theme.Ink : Theme.Ink with { W = 0.92f };
-            dl.AddText(new Vector2(p.X + trackW + labelGap, p.Y + (h - lineH) * 0.5f), Theme.U32(ink with { W = ink.W * a }), text);
-        }
-
-        if (hovered) ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        if (tooltip != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            Tooltip(tooltip);
-
+        DrawTrailingLabel(dl, new Vector2(p.X + trackW, p.Y), h, text, hovered, a);
+        HoverFeedback(hovered, tooltip);
         return changed;
     }
 
     /// <summary>Width <see cref="Toggle"/> takes for <paramref name="label"/> (switch, gap and the visible text), in the current font.</summary>
     public static float ToggleWidth(string label)
     {
-        var text = Visible(label);
-        return Theme.S(34f) + (text.Length > 0 ? Theme.S(8f) + ImGui.CalcTextSize(text).X : 0f);
+        return Theme.S(34f) + TrailingLabelWidth(Visible(label));
     }
 
     // ───────────────────────── Checkbox ─────────────────────────
@@ -258,12 +233,10 @@ internal static partial class W
         var itemId = string.IsNullOrEmpty(id) ? "##check" : id;
         float box = Theme.S(16f);
         float h = MathF.Max(box, height > 0f ? height : ImGui.GetFrameHeight());
-        float labelGap = Theme.S(8f);
-        float labelW = text.Length > 0 ? labelGap + ImGui.CalcTextSize(text).X : 0f;
 
         var p = ImGui.GetCursorScreenPos();
         uint key = ImGui.GetID(itemId);
-        bool clicked = InvisibleItem(itemId, new Vector2(box + labelW, h), enabled) && enabled;
+        bool clicked = InvisibleItem(itemId, new Vector2(box + TrailingLabelWidth(text), h), enabled) && enabled;
         bool hovered = enabled && ImGui.IsItemHovered();
         if (clicked)
             value = !value;
@@ -277,39 +250,28 @@ internal static partial class W
 
         if (value || mixed)
         {
-            var fill = Theme.Lerp(Theme.Accent, Theme.AccentHover, hot);
-            dl.AddRectFilled(min, max, Theme.U32(fill with { W = a }), r);
+            dl.AddRectFilled(min, max, Theme.U32(Theme.Fade(Theme.Lerp(Theme.Accent, Theme.AccentHover, hot), a)), r);
         }
         else
         {
-            var fill = Theme.Lerp(Theme.Raised, Theme.Raised2, hot);
-            dl.AddRectFilled(min, max, Theme.U32(fill with { W = a }), r);
-            dl.AddRect(min, max, Theme.U32(Theme.BorderControl with { W = a }), r, ImDrawFlags.None, Theme.S(1f));
+            dl.AddRectFilled(min, max, Theme.U32(Theme.Fade(Theme.Lerp(Theme.Raised, Theme.Raised2, hot), a)), r);
+            dl.AddRect(min, max, Theme.U32(Theme.Fade(Theme.BorderControl, a)), r, ImDrawFlags.None, Theme.S(1f));
         }
 
         if (value)
         {
-            DrawGlyphCentered(dl, FontAwesomeIcon.Check, min, new Vector2(box, box), Theme.OnAccent with { W = a });
+            DrawGlyphCentered(dl, FontAwesomeIcon.Check, min, new Vector2(box, box), Theme.Fade(Theme.OnAccent, a));
         }
         else if (mixed)
         {
             float inset = Theme.S(4f);
             float midY = (min.Y + max.Y) * 0.5f;
             dl.AddRectFilled(new Vector2(min.X + inset, midY - Theme.S(1f)), new Vector2(max.X - inset, midY + Theme.S(1f)),
-                Theme.U32(Theme.OnAccent with { W = a }), Theme.S(1f));
+                Theme.U32(Theme.Fade(Theme.OnAccent, a)), Theme.S(1f));
         }
 
-        if (text.Length > 0)
-        {
-            float lineH = ImGui.GetTextLineHeight();
-            var ink = hovered ? Theme.Ink : Theme.Ink with { W = 0.92f };
-            dl.AddText(new Vector2(p.X + box + labelGap, MathF.Round(p.Y + (h - lineH) * 0.5f)), Theme.U32(ink with { W = ink.W * a }), text);
-        }
-
-        if (hovered)
-            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-        if (tooltip != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            Tooltip(tooltip);
+        DrawTrailingLabel(dl, new Vector2(p.X + box, p.Y), h, text, hovered, a);
+        HoverFeedback(hovered, tooltip);
         return clicked;
     }
 
@@ -500,7 +462,7 @@ internal static partial class W
                     }
                 }
                 ImGui.Dummy(new Vector2(width - pad * 2f, lineH));
-                ImGui.Dummy(new Vector2(0f, MathF.Max(0f, Theme.S(4f) - ImGui.GetStyle().ItemSpacing.Y)));
+                Gap(4f);
             }
         }
 
@@ -626,13 +588,19 @@ internal static partial class W
     }
 
     /// <summary>Upper-cased text, cached (headings and captions repeat every frame).</summary>
-    private static string Upper(string text)
+    private static string Upper(string text) => Cached(UpperCache, text, static t => t.ToUpperInvariant());
+
+    /// <summary>
+    /// A string derived from <paramref name="key"/>, made once and reused (labels repeat every frame). Bounded: a full
+    /// cache is cleared, so one-off texts (item names...) can't grow it forever.
+    /// </summary>
+    private static string Cached(Dictionary<string, string> cache, string key, Func<string, string> make)
     {
-        if (UpperCache.TryGetValue(text, out var upper))
-            return upper;
-        if (UpperCache.Count >= UpperCacheLimit)
-            UpperCache.Clear(); // one-off texts (item names...) can't grow it forever
-        return UpperCache[text] = text.ToUpperInvariant();
+        if (cache.TryGetValue(key, out var value))
+            return value;
+        if (cache.Count >= CacheLimit)
+            cache.Clear();
+        return cache[key] = make(key);
     }
 
     /// <summary>A one-character string for drawing glyph by glyph, cached (ASCII in a table, the rest on first use).</summary>
@@ -659,15 +627,6 @@ internal static partial class W
         if (!IconStrings.TryGetValue(icon, out var glyph))
             IconStrings[icon] = glyph = icon.ToIconString();
         return glyph;
-    }
-
-    /// <summary>Page title in the Display font, with an optional Dim subtitle beneath.</summary>
-    public static void PageTitle(string title, string? subtitle = null)
-    {
-        using (Fonts.Display.Push())
-            ImGui.TextColored(Theme.Ink, title);
-        if (!string.IsNullOrEmpty(subtitle))
-            ImGui.TextColored(Theme.Dim, subtitle);
     }
 
     /// <summary>
@@ -1083,7 +1042,7 @@ internal static partial class W
     }
 
     /// <summary>Draws an optional icon + label (current font) centered together in a rect.</summary>
-    public static void DrawIconLabelCentered(ImDrawListPtr dl, FontAwesomeIcon? icon, string text, Vector2 min, Vector2 size, Vector4 color)
+    private static void DrawIconLabelCentered(ImDrawListPtr dl, FontAwesomeIcon? icon, string text, Vector2 min, Vector2 size, Vector4 color)
     {
         uint col = Theme.U32(color);
         string glyph = icon is { } i ? Glyph(i) : string.Empty;
@@ -1110,7 +1069,24 @@ internal static partial class W
     {
         if (string.IsNullOrEmpty(label)) return string.Empty;
         int marker = label.IndexOf("##", StringComparison.Ordinal);
-        return marker >= 0 ? label.Substring(0, marker) : label;
+        if (marker < 0) return label;
+        return marker == 0 ? string.Empty : Cached(VisibleCache, label, static l => l[..l.IndexOf("##", StringComparison.Ordinal)]);
+    }
+
+    /// <summary>
+    /// A vertical gap of <paramref name="px"/> design pixels between two items, counting the item spacing ImGui adds
+    /// anyway (so it never adds less than nothing).
+    /// </summary>
+    private static void Gap(float px) => ImGui.Dummy(new Vector2(0f, MathF.Max(0f, Theme.S(px) - ImGui.GetStyle().ItemSpacing.Y)));
+
+    /// <summary>A 1 px hairline (RuleHair) filling a rect: rules between the shell's parts, dividers. Hairlines, not boxes.</summary>
+    public static void Hairline(ImDrawListPtr dl, Vector2 min, Vector2 max) => dl.AddRectFilled(min, max, Theme.U32(Theme.RuleHair));
+
+    /// <summary>A floating surface (Panel fill, CardBorder edge, window rounding): the minimized bar, a modal's body.</summary>
+    public static void DrawPanel(ImDrawListPtr dl, Vector2 min, Vector2 max)
+    {
+        dl.AddRectFilled(min, max, Theme.U32(Theme.Panel), Theme.Radius.Window);
+        dl.AddRect(min, max, Theme.U32(Theme.CardBorder), Theme.Radius.Window, ImDrawFlags.None, Theme.S(1f));
     }
 
     /// <summary>
@@ -1121,6 +1097,31 @@ internal static partial class W
     {
         var window = ImGuiP.GetCurrentWindow();
         return window.IsNull ? 0u : window.ID;
+    }
+
+    /// <summary>
+    /// The end of every interactive widget: the hand cursor while <paramref name="hovered"/>, and its tooltip (shown even
+    /// when the widget is disabled, so it can say why).
+    /// </summary>
+    private static void HoverFeedback(bool hovered, string? tooltip)
+    {
+        if (hovered)
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        if (tooltip != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            Tooltip(tooltip);
+    }
+
+    /// <summary>Width of the clickable label right of a toggle or checkbox (gap + text), 0 without text.</summary>
+    private static float TrailingLabelWidth(string text) => text.Length > 0 ? Theme.Space.Tight + ImGui.CalcTextSize(text).X : 0f;
+
+    /// <summary>The label right of a toggle or checkbox whose control ends at <paramref name="at"/>.X, centered in <paramref name="height"/>.</summary>
+    private static void DrawTrailingLabel(ImDrawListPtr dl, Vector2 at, float height, string text, bool hovered, float alpha)
+    {
+        if (text.Length == 0)
+            return;
+        var ink = hovered ? Theme.Ink : Theme.Fade(Theme.Ink, 0.92f);
+        dl.AddText(new Vector2(at.X + Theme.Space.Tight, MathF.Round(at.Y + (height - ImGui.GetTextLineHeight()) * 0.5f)),
+                   Theme.U32(Theme.Fade(ink, alpha)), text);
     }
 
     /// <summary>InvisibleButton that can be disabled while still reporting hover for tooltips.</summary>

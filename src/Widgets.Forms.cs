@@ -21,17 +21,24 @@ internal static partial class W
     {
         float w = FillWidth(width, ImGui.GetFrameHeight() * 3f);
         float h = height > 0f ? height : ImGui.GetTextLineHeight() * 4f + ImGui.GetStyle().FramePadding.Y * 2f;
-        bool changed;
-        using (error ? new Theme.StyleScope().Color(ImGuiCol.FrameBg, Theme.Negative with { W = 0.10f }) : null)
-            changed = ImGui.InputTextMultiline(id, ref text, ClampLength(maxLength), new Vector2(w, h), flags);
 
-        var min = ImGui.GetItemRectMin();
-        var max = ImGui.GetItemRectMax();
+        // A multi-line input is a child window, drawn after (over) this window's draw list. So the field's surface
+        // is painted here first and the input's own background is transparent; the hint and border can then show.
+        var min = ImGui.GetCursorScreenPos();
+        var max = min + new Vector2(w, h);
         var dl = ImGui.GetWindowDrawList();
-        if (!string.IsNullOrEmpty(hint) && text.Length == 0 && !ImGui.IsItemActive())
+        dl.AddRectFilled(min, max, Theme.U32(error ? Theme.Lerp(Theme.Field, Theme.Negative, 0.10f) : Theme.Field), Theme.Radius.Control);
+        if (!string.IsNullOrEmpty(hint) && text.Length == 0 && ImGuiP.GetActiveID() != ImGui.GetID(id))
             dl.AddText(min + ImGui.GetStyle().FramePadding, Theme.U32(Theme.Faint), hint);
         if (error)
             dl.AddRect(min, max, Theme.U32(Theme.Negative with { W = 0.7f }), Theme.Radius.Control, ImDrawFlags.None, Theme.S(1f));
+
+        bool changed;
+        using (new Theme.StyleScope()
+                   .Color(ImGuiCol.FrameBg, Theme.Transparent)
+                   .Color(ImGuiCol.FrameBgHovered, Theme.Transparent)
+                   .Color(ImGuiCol.FrameBgActive, Theme.Transparent))
+            changed = ImGui.InputTextMultiline(id, ref text, ClampLength(maxLength), new Vector2(w, h), flags);
         return changed;
     }
 
@@ -105,8 +112,8 @@ internal static partial class W
             dl.AddRectFilled(p, max, Theme.U32(Theme.Wash(0.05f * hot * (1f - on))), r);
         if (on > 0.01f)
         {
-            dl.AddRectFilled(p, max, Theme.U32(Theme.AccentAlpha(0.16f * on)), r);
-            dl.AddRectFilled(p, new Vector2(p.X + Theme.S(3f), max.Y), Theme.U32(Theme.AccentAlpha(on)), r, ImDrawFlags.RoundCornersLeft);
+            dl.AddRectFilled(p, max, Theme.U32(Theme.AccentAlpha(0.16f * on * a)), r);
+            dl.AddRectFilled(p, new Vector2(p.X + Theme.S(3f), max.Y), Theme.U32(Theme.AccentAlpha(on * a)), r, ImDrawFlags.RoundCornersLeft);
         }
 
         var x = p.X + Theme.S(12f);

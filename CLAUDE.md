@@ -318,6 +318,9 @@ scaled pixels unless it says design px.
 
 Newest first. One line per change, naming anything consumers must do.
 
+- 2026-10-01: `W.TextArea` paints its own surface so the hint and the error border show (the input is a child window
+  drawn over the parent); `W.ListRow` fades its selected wash when disabled. Nothing for consumers to change.
+
 - 2026-10-01: Recovery no longer leaks a style var: the body's and nav's child padding stays pushed until `EndChild`.
   Nothing for consumers to change.
 

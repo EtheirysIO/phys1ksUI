@@ -15,7 +15,7 @@ map and adds a changelog line in the same commit.
 - **Consumers** (all import the props by relative path, so the kit must stay at `N:\FFXIV\phys1ksUI`):
   - Invenwhorey: `N:\FFXIV\Invenwhorey\Invenwhorey.csproj`
   - MakeShopper: `N:\FFXIV\MakeShopper\MakeShopper\MakeShopper.csproj`
-  - PuppetMasterKK: `N:\FFXIV\PuppetMaster\src\PuppetMasterKK\PuppetMasterKK.csproj`
+  - PuppetMasterKK: `N:\FFXIV\PuppetMaster\PuppetMasterKK\PuppetMasterKK.csproj`
 - **One copy, fixed once.** A plugin never forks or patches kit code locally. A missing or wrong widget is fixed here,
   and every plugin gets it on its next build.
 - **Who edits.** One session at a time. If you're working in a plugin repo and need a kit change, ask the session that
@@ -24,14 +24,14 @@ map and adds a changelog line in the same commit.
 ## Making a change
 
 1. **Look before you cut.** Before renaming, removing or changing a signature, grep both consumers:
-   `grep -rn "W.Thing\|Theme.Thing" N:/FFXIV/Invenwhorey N:/FFXIV/MakeShopper N:/FFXIV/PuppetMaster/src --include=*.cs`. Adding optional
+   `grep -rn "W.Thing\|Theme.Thing" N:/FFXIV/Invenwhorey N:/FFXIV/MakeShopper N:/FFXIV/PuppetMaster/PuppetMasterKK --include=*.cs`. Adding optional
    parameters at the end is safe; reordering or removing isn't. Anything consumers call is listed under
    "Consumers depend on" below.
 2. **Build every consumer.** Each must come out 0 errors, 0 warnings:
    ```
    dotnet build N:/FFXIV/Invenwhorey/Invenwhorey.csproj -c Debug
    dotnet build N:/FFXIV/MakeShopper/MakeShopper/MakeShopper.csproj -c Debug
-   dotnet build N:/FFXIV/PuppetMaster/src/PuppetMasterKK/PuppetMasterKK.csproj -c Debug
+   dotnet build N:/FFXIV/PuppetMaster/PuppetMasterKK/PuppetMasterKK.csproj -c Debug
    ```
 3. **Update the docs:** this file's API map and changelog, and `README.md`'s "Widgets at a glance" if a widget changed.
 4. **Commit** in `N:\FFXIV\phys1ksUI` (git, branch `main`), with the user's rules:

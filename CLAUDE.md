@@ -102,6 +102,12 @@ corrupts the draw-list splitter or underflows the popup stack.
 - **Outside a kit catch site** (a plugin's own try/catch), scopes fall back to comparing `W.CurrentWindowId()` with the
   window they started in, and skip their pops when it differs.
 
+**Child windows at a catch site:** ImGui's recovery pops style back to the size it had at `BeginChild`. A var
+pushed just before `BeginChild` and popped right after it would leave the stack one short of that, so recovery stops one
+early and the page's last push leaks into the next window (seen in game: "PushStyleVar/PopStyleVar Mismatch", then
+other plugins starting with style stack size 1). Keep such a var pushed until after `EndChild`, and push the content's
+own values after `BeginChild` (recovery pops those with the page).
+
 **Rules for new code:**
 - A new disposable scope checks `KitRecovery.Unwinding` first. While it's set, update kit counters, `Defer` what ImGui
   won't undo, and return. `Theme.StyleScope` already skips its pops, so compose with it.
@@ -110,8 +116,8 @@ corrupts the draw-list splitter or underflows the popup stack.
 - A new catch site uses the filter form, and captures the window id before the `try`.
 - Fonts: always `using (Fonts.X.Push())`. Recovery doesn't pop fonts.
 
-Not yet exercised in game: throw from a page on purpose (inside a card, a raw table, a combo, a fold card while it
-animates) and confirm there's no assert and the error banner shows.
+Exercised in game once (PuppetMasterKK, a page throwing inside a card in a child window): it found the style-var leak
+above. Still worth trying: a throw inside a raw table, a combo, and a fold card while it animates.
 
 ## Conventions for widgets
 
@@ -311,6 +317,9 @@ scaled pixels unless it says design px.
 ## Changelog
 
 Newest first. One line per change, naming anything consumers must do.
+
+- 2026-10-01: Recovery no longer leaks a style var: the body's and nav's child padding stays pushed until `EndChild`.
+  Nothing for consumers to change.
 
 - 2026-10-01: PuppetMaster joins as a consumer. New: `W.TextArea`, `W.NumberInput`, `W.ListRow` (`Widgets.Forms.cs`),
   `Modal.Confirm`, `Modal.Close`. Additions only; nothing for the other plugins to change.

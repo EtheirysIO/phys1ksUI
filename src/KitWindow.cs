@@ -293,10 +293,14 @@ internal abstract class KitWindow : Window
             var rule = Theme.S(1f);
             ImGui.SetCursorScreenPos(new Vector2(rightMin.X, rightMin.Y + headerH + rule));
             var bodyH = MathF.Max(1f, winSize.Y - headerH - rule);
+            // The child's padding stays pushed until EndChild: ImGui's recovery pops style back to what it was at
+            // BeginChild, so a var popped right after BeginChild would leave the page's pushes one short (a leak).
             ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(Theme.Space.BodyPad));
             var bodyVisible = ImGui.BeginChild("##kitBody", new Vector2(rightW, bodyH), false, ImGuiWindowFlags.AlwaysUseWindowPadding);
-            ImGui.PopStyleVar();
             var bodyId = W.CurrentWindowId();
+            // Popups and tooltips the page opens get normal padding back (recovery pops this along with the page).
+            ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Theme.S(10f, 8f));
+            var innerPushed = true;
             try
             {
                 if (bodyVisible)
@@ -307,12 +311,16 @@ internal abstract class KitWindow : Window
                 // Close what the page left open back to the body, so EndChild ends the body; the header, sidebar and
                 // overlays still draw, and the page shows the error in place of its rest.
                 KitRecovery.RecoverTo(bodyId);
+                innerPushed = false;
                 ReportDrawError(ex);
                 DrawBodyError(ex);
             }
             finally
             {
+                if (innerPushed)
+                    ImGui.PopStyleVar();
                 ImGui.EndChild();
+                ImGui.PopStyleVar();
             }
 
             if (!sizeDriven)
@@ -450,11 +458,15 @@ internal abstract class KitWindow : Window
         var navTop = min.Y + headerH + Theme.S(1f);
         var navH = MathF.Max(Theme.S(40f), max.Y - statusH - navTop);
         ImGui.SetCursorScreenPos(new Vector2(min.X, navTop));
+        // Pushed until EndChild, like the body (see DrawShell): recovery measures from BeginChild.
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(gutter));
         ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, Theme.S(6f));
         var visible = ImGui.BeginChild("##kitNav", new Vector2(size.X - Theme.S(1f), navH), false, ImGuiWindowFlags.AlwaysUseWindowPadding);
-        ImGui.PopStyleVar(2);
         var navId = W.CurrentWindowId();
+        // The nav's own popups and scrolling children get the normal padding and scrollbar back.
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, Theme.S(10f, 8f));
+        ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, Theme.S(10f));
+        var innerPushed = true;
         try
         {
             if (visible)
@@ -463,11 +475,15 @@ internal abstract class KitWindow : Window
         catch (Exception ex) when (KitRecovery.Catch())
         {
             KitRecovery.RecoverTo(navId);
+            innerPushed = false;
             ReportDrawError(ex);
         }
         finally
         {
+            if (innerPushed)
+                ImGui.PopStyleVar(2);
             ImGui.EndChild();
+            ImGui.PopStyleVar(2);
         }
 
         DrawStatusBlock(dl, new Vector2(min.X + gutter, max.Y - statusH), innerW, op, lines);

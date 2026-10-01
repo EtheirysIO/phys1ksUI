@@ -142,6 +142,12 @@ internal abstract class KitWindow : Window
     /// <summary>More window flags (the shell sets <see cref="Window.Flags"/> itself every frame, so set extra ones here).</summary>
     protected virtual ImGuiWindowFlags ExtraFlags => ImGuiWindowFlags.None;
 
+    /// <summary>
+    /// A picture for the brand tile (full path to a PNG, usually the plugin's images\icon.png) instead of the accent tile
+    /// and glyph. The glyph tile shows while it loads, or if it can't be read.
+    /// </summary>
+    protected virtual string? BrandImagePath => null;
+
     // ───────────────────────── Window ─────────────────────────
 
     public override void PreDraw()
@@ -495,11 +501,18 @@ internal abstract class KitWindow : Window
         var tileMax = p + new Vector2(tile, tile);
         var r = Theme.Radius.Small;
 
-        // Fake gradient: darker base, lighter accent on the top 55%, soft drop shadow.
+        // Soft drop shadow, then the picture, or a fake-gradient accent tile (darker base, lighter top 55%) with the glyph.
         dl.AddRectFilled(p + new Vector2(0f, Theme.S(2f)), tileMax + new Vector2(0f, Theme.S(2f)), Theme.U32(Theme.Shadow(0.35f)), r);
-        dl.AddRectFilled(p, tileMax, Theme.U32(Theme.Darken(Theme.Accent, 0.12f)), r);
-        dl.AddRectFilled(p, new Vector2(tileMax.X, p.Y + tile * 0.55f), Theme.U32(Theme.Lighten(Theme.Accent, 0.08f)), r, ImDrawFlags.RoundCornersTop);
-        W.DrawGlyphCentered(dl, brandIcon, p, new Vector2(tile, tile), Theme.OnAccent);
+        if (TryGetBrandImage(out var image))
+        {
+            dl.AddImageRounded(image, p, tileMax, Vector2.Zero, Vector2.One, Theme.U32(new Vector4(1f, 1f, 1f, 1f)), r);
+        }
+        else
+        {
+            dl.AddRectFilled(p, tileMax, Theme.U32(Theme.Darken(Theme.Accent, 0.12f)), r);
+            dl.AddRectFilled(p, new Vector2(tileMax.X, p.Y + tile * 0.55f), Theme.U32(Theme.Lighten(Theme.Accent, 0.08f)), r, ImDrawFlags.RoundCornersTop);
+            W.DrawGlyphCentered(dl, brandIcon, p, new Vector2(tile, tile), Theme.OnAccent);
+        }
 
         var textX = p.X + tile + Theme.S(10f);
         float nameH;
@@ -517,6 +530,36 @@ internal abstract class KitWindow : Window
             dl.AddRectFilled(vMin, vMax, Theme.U32(Theme.Wash(0.06f)), Theme.Radius.Chip);
             dl.AddText(vMin + new Vector2(Theme.S(4f), Theme.S(1f)), Theme.U32(Theme.Slate), version);
         }
+    }
+
+    private bool brandImageFailed;
+
+    /// <summary>The brand picture's texture, once loaded. A file that can't be read is not asked for again.</summary>
+    private bool TryGetBrandImage(out ImTextureID handle)
+    {
+        handle = default;
+        var path = BrandImagePath;
+        if (brandImageFailed || string.IsNullOrEmpty(path) || Kit.Textures == null)
+            return false;
+        try
+        {
+            if (Kit.Textures.GetFromFile(path).TryGetWrap(out var wrap, out var error) && wrap != null)
+            {
+                handle = wrap.Handle;
+                return true;
+            }
+            if (error != null)
+            {
+                brandImageFailed = true;
+                Kit.Log?.Warning($"Brand image {path} couldn't be loaded: {error.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            brandImageFailed = true;
+            Kit.Log?.Warning($"Brand image {path} couldn't be loaded: {ex.Message}");
+        }
+        return false;
     }
 
     private static (float Body, float Small) LineHeights()

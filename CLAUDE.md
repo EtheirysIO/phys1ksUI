@@ -198,8 +198,8 @@ scaled pixels unless it says design px.
 - `KitWindow(windowName, brand, brandIcon, minimumSize /* design px @100% */)`:
   - Required overrides: `Accent`, `Colorblind`, `PageTitle`, `DrawSidebarNav()`, `DrawBody()`.
   - Optional overrides: `PageKey`, `DrawBodyTop()`, `DrawHeaderRight(HeaderSlot)`, `HeaderRightWidth`,
-    `GetRunningOperation()`, `GetStatusLines()`, `DrawOverlays()`, `ExtraFlags`, `BrandImagePath` (a PNG: the sidebar then opens
-    with it large and accent-framed, the name and version under it; the minimized bar shows it small).
+    `GetRunningOperation()`, `GetStatusLines()`, `DrawOverlays()`, `ExtraFlags`, `BrandImagePath` (a PNG shown in the
+    brand tile instead of the accent tile and glyph).
   - Public members: `Version`, `Compact`, `ToggleCompact()`, `Expand()`.
 - Records:
   - `HeaderSlot(Min, Max)`, with `Width`, `Height` and `CenterY`.
@@ -319,9 +319,8 @@ scaled pixels unless it says design px.
 
 Newest first. One line per change, naming anything consumers must do.
 
-- 2026-10-01: `KitWindow.BrandImagePath`: an optional brand picture. The sidebar opens with it large and framed in the
-  accent (name and version under it); without one, the small accent tile stays. Optional override; nothing for
-  consumers to change.
+- 2026-10-01: `KitWindow.BrandImagePath`: an optional picture for the sidebar's brand tile (PuppetMasterKK uses its
+  icon). Optional override; nothing for consumers to change.
 
 - 2026-10-01: `W.TextArea` paints its own surface so the hint and the error border show (the input is a child window
   drawn over the parent); `W.ListRow` fades its selected wash when disabled. Nothing for consumers to change.

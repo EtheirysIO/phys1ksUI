@@ -12,9 +12,10 @@ map and adds a changelog line in the same commit.
   and copies `LICENSE-Roboto.txt` next to the plugin dll. Importing the props twice is harmless (items exclude
   themselves).
 - **Everything is `internal`** except `AccentColor`, which a plugin's public `Configuration` stores.
-- **Consumers** (both import the props by relative path, so the kit must stay at `N:\FFXIV\phys1ksUI`):
+- **Consumers** (all import the props by relative path, so the kit must stay at `N:\FFXIV\phys1ksUI`):
   - Invenwhorey: `N:\FFXIV\Invenwhorey\Invenwhorey.csproj`
   - MakeShopper: `N:\FFXIV\MakeShopper\MakeShopper\MakeShopper.csproj`
+  - PuppetMaster: `N:\FFXIV\PuppetMaster\Source\PuppetMaster\PuppetMaster.csproj`
 - **One copy, fixed once.** A plugin never forks or patches kit code locally. A missing or wrong widget is fixed here,
   and every plugin gets it on its next build.
 - **Who edits.** One session at a time. If you're working in a plugin repo and need a kit change, ask the session that
@@ -23,13 +24,14 @@ map and adds a changelog line in the same commit.
 ## Making a change
 
 1. **Look before you cut.** Before renaming, removing or changing a signature, grep both consumers:
-   `grep -rn "W.Thing\|Theme.Thing" N:/FFXIV/Invenwhorey N:/FFXIV/MakeShopper --include=*.cs`. Adding optional
+   `grep -rn "W.Thing\|Theme.Thing" N:/FFXIV/Invenwhorey N:/FFXIV/MakeShopper N:/FFXIV/PuppetMaster/Source/PuppetMaster --include=*.cs`. Adding optional
    parameters at the end is safe; reordering or removing isn't. Anything consumers call is listed under
    "Consumers depend on" below.
-2. **Build both consumers.** Both must come out 0 errors, 0 warnings:
+2. **Build every consumer.** Each must come out 0 errors, 0 warnings:
    ```
    dotnet build N:/FFXIV/Invenwhorey/Invenwhorey.csproj -c Debug
    dotnet build N:/FFXIV/MakeShopper/MakeShopper/MakeShopper.csproj -c Debug
+   dotnet build N:/FFXIV/PuppetMaster/Source/PuppetMaster/PuppetMaster.csproj -c Debug
    ```
 3. **Update the docs:** this file's API map and changelog, and `README.md`'s "Widgets at a glance" if a widget changed.
 4. **Commit** in `N:\FFXIV\phys1ksUI` (git, branch `main`), with the user's rules:
@@ -49,7 +51,8 @@ map and adds a changelog line in the same commit.
 | `src/Motion.cs` | Eased values by ImGui id (swept when stale), tweens, reveal, pulse, easing curves. Everything honors "reduce motion". |
 | `src/Widgets.cs` | `W` part 1: buttons, toggle, checkbox, segmented control, card, text, pills, status dot, inputs, item icons, shared drawing helpers. |
 | `src/Widgets.Extra.cs` | `W` part 2: fold card, compact button, banner, chips, divider, links, stat, tables, combo, nav rows. |
-| `src/Modal.cs` | `Modal.Draw` (themed modal over a hand-painted scrim) and the shared modal-dim bookkeeping. |
+| `src/Widgets.Forms.cs` | `W` part 3: text area, number input, list row. |
+| `src/Modal.cs` | `Modal.Draw` (themed modal over a hand-painted scrim), `Modal.Confirm`, `Modal.Close`, and the shared modal-dim bookkeeping. |
 | `src/KitWindow.cs` | The window shell base class: sidebar, header strip, body, minimize to a title bar, per-area error handling. Also `HeaderSlot`, `RunningOperation`, `StatusLine`. |
 | `src/Recovery.cs` | `KitRecovery`: puts ImGui's stacks back after a draw throws (see "Error recovery"). |
 | `src/Appearance.cs` | `Appearance.DrawCard`: the standard accent, text-size and colorblind settings card. |
@@ -164,13 +167,12 @@ Consumers rely on these. Don't "fix" one without migrating both plugins in the s
 ## Backlog (not built yet)
 
 These are what the plugins still hand-roll with raw ImGui:
-- a selectable list row
-- a number input and a slider
+- a slider
 - a popup or context-menu scope that uses `NewSurface`
-- `Modal.Confirm` and footer buttons, plus `Modal.Close(ref open)`
+- modal footer buttons (a right-aligned button row)
 - a progress bar that sits in normal layout
 - `Banner` presets for info, warning and error
-- a multiline or submit-on-Enter `TextInput`
+- a submit-on-Enter `TextInput`
 - a pulsing pill background
 - a `ThemedWindow` base for non-shell windows
 
@@ -179,7 +181,7 @@ submodule.
 
 ## API map
 
-`W` is `internal static partial class W` (`Widgets.cs` + `Widgets.Extra.cs`). Signatures show defaults; `px` means
+`W` is `internal static partial class W` (`Widgets.cs` + `Widgets.Extra.cs` + `Widgets.Forms.cs`). Signatures show defaults; `px` means
 scaled pixels unless it says design px.
 
 **Kit and window**
@@ -196,8 +198,10 @@ scaled pixels unless it says design px.
   - `HeaderSlot(Min, Max)`, with `Width`, `Height` and `CenterY`.
   - `RunningOperation(Label, Detail?, Fraction?, Cancel?)`.
   - `StatusLine(Text, Color, Icon?, Tooltip?)`.
-- `Modal.Draw(title, ref open, Action body, flags = AlwaysAutoResize)`. A body that closes itself sets `open = false`
-  and calls `ImGui.CloseCurrentPopup()`.
+- `Modal.Draw(title, ref open, Action body, flags = AlwaysAutoResize)`. A body that closes itself calls
+  `Modal.Close(ref open)` (clears the flag and closes the popup).
+- `Modal.Confirm(title, ref open, message, confirmLabel, danger = false, detail?, cancelLabel = "Cancel")`: a yes / no
+  dialog (confirm button first, Danger when `danger`). True on the frame confirm is clicked; either choice clears `open`.
 - `Appearance.DrawCard(ref accent, ref textScale, ref colorblind)` returns true when something changed; save your
   config then.
 - `KitRecovery`: `Catch()`, `Unwinding`, `Defer(windowId, undo)`, `RecoverTo(windowId)`. Kit-internal.
@@ -252,6 +256,10 @@ scaled pixels unless it says design px.
 - `Combo(id, preview, width, height = 0)` returns a `ComboScope` with `.Open`. Fill it with
   `ComboItem(label, selected)`.
 - `Combo(id, IReadOnlyList<string> items, ref index, width, height = 0)`.
+- `TextArea(id, ref text, width, height = 0 /* 4 lines */, hint?, maxLength = 2048, error = false, flags)`: multi-line,
+  with a hint drawn while empty. The input stays the last item.
+- `NumberInput(id, ref int value, min, max, step = 1, width = 0, suffix?)`: InputInt with steppers, clamped; true when
+  the value changed.
 
 **W: surfaces**
 - `Card(id, title?, rightNote?)` returns an `IDisposable`. Nested cards draw as an outline.
@@ -282,6 +290,8 @@ scaled pixels unless it says design px.
 
 **W: nav and icons**
 - `NavRow(id, icon, label, active, subtitle?, enabled = true)`.
+- `ListRow(id, label, selected, subtitle?, dot?, dotPulse = false, trailing?, tooltip?, enabled = true)`: a full-width
+  selectable row for lists inside a page; accent wash and left bar when selected. True when clicked.
 - `ItemIcon(itemId, hq, size)`: HQ is +1,000,000, collectable is +500,000, and event items are 2,000,000 and up.
 - `Glyph(icon)`, `DrawGlyphCentered(dl, icon, min, size, color)`, `DrawGlyphAt(dl, icon, center, px, color)`.
 
@@ -301,6 +311,9 @@ scaled pixels unless it says design px.
 ## Changelog
 
 Newest first. One line per change, naming anything consumers must do.
+
+- 2026-10-01: PuppetMaster joins as a consumer. New: `W.TextArea`, `W.NumberInput`, `W.ListRow` (`Widgets.Forms.cs`),
+  `Modal.Confirm`, `Modal.Close`. Additions only; nothing for the other plugins to change.
 
 - 2026-09-30:
   - Review pass:

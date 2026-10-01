@@ -1,8 +1,8 @@
 # phys1ksUI
 
 The shared look for phys1ks's Dalamud plugins. It started as Invenwhorey's design and is compiled as source into each
-plugin, so every plugin gets the same window, fonts and widgets without shipping another DLL. Invenwhorey and MakeShopper
-both run on it. Changing the kit? Read `CLAUDE.md` first: the change rules, the API map and the changelog live there.
+plugin, so every plugin gets the same window, fonts and widgets without shipping another DLL. Invenwhorey, MakeShopper
+and PuppetMaster run on it. Changing the kit? Read `CLAUDE.md` first: the change rules, the API map and the changelog live there.
 
 ## Use it in a plugin
 
@@ -44,9 +44,9 @@ both run on it. Changing the kit? Read `CLAUDE.md` first: the change rules, the 
 | --- | --- |
 | `src/Theme.cs` | Colors, accents, washes and shadows, `S()` scaling, radii, spacing, `Theme.Push()`, color math, the colorblind shape. |
 | `src/Fonts.cs` | Roboto at exact pixel sizes: Display, Title, Body, Label, Small, with the game's glyphs merged in. Also the text-size presets. |
-| `src/Widgets.cs`, `src/Widgets.Extra.cs` | `W`: buttons, checkbox, toggle, segmented control, cards, chips and pills, banners, inputs, combo, dividers, tables, nav rows, tooltips, icons. |
+| `src/Widgets.cs`, `src/Widgets.Extra.cs`, `src/Widgets.Forms.cs` | `W`: buttons, checkbox, toggle, segmented control, cards, chips and pills, banners, inputs (text, text area, number), combo, dividers, tables, nav and list rows, tooltips, icons. |
 | `src/Motion.cs` | Hover fades, eased values, tweens (in-out and out), reveals and pulses; all of it respects "reduce motion". |
-| `src/Modal.cs` | `Modal.Draw`: themed modal dialogs over a hand-painted scrim. |
+| `src/Modal.cs` | `Modal.Draw`: themed modal dialogs over a hand-painted scrim; `Modal.Confirm` for yes / no. |
 | `src/KitWindow.cs` | The window shell: sidebar with brand, nav and status block; header strip; body. It also minimizes to a title bar (the chevron or a double-click on the header) that shows what's running, with Cancel. Call `Expand()` when a command opens a page. |
 | `src/Recovery.cs` | `KitRecovery`: puts ImGui back together after a draw throws (see "When a draw throws"). |
 | `src/Appearance.cs` | The standard accent and text-size settings card. |
@@ -110,13 +110,14 @@ widget dims and ignores clicks inside `ImGui.BeginDisabled()`.
 | --- | --- |
 | Buttons | `PrimaryButton`, `SecondaryButton`, `DangerButton`, `GhostButton`, `IconTextButton(icon, label, kind)`, `ButtonWidth`, `IconButton`, `RoundButton`, `CompactButton` |
 | Choices | `Toggle(label, ref value)`, `ToggleWidth(label)`, `Checkbox(id, ref value, mixed = false, height = 0, tooltip, enabled)`, `Segmented(id, options, ref index, width)`, `SegmentedWidth` |
-| Inputs | `SearchBox(id, ref text, hint, width, maxLength = 512, error = false)`, `TextInput(id, ref text, hint, width, maxLength = 256, error = false, flags = None)`, `Combo(id, preview, width, height = 0)` → `ComboScope` (`.Open`) with `ComboItem(label, selected)`, `Combo(id, items, ref index, width, height = 0)` |
+| Inputs | `SearchBox(id, ref text, hint, width, maxLength = 512, error = false)`, `TextInput(id, ref text, hint, width, maxLength = 256, error = false, flags = None)`, `TextArea(id, ref text, width, height = 0, hint, maxLength = 2048, error = false)`, `NumberInput(id, ref value, min, max, step = 1, width = 0, suffix)`, `Combo(id, preview, width, height = 0)` → `ComboScope` (`.Open`) with `ComboItem(label, selected)`, `Combo(id, items, ref index, width, height = 0)` |
 | Surfaces | `Card`, `FoldCard`, `Avail()`, `NewSurface()`, `Spacer()`, `Divider(space = 0)`, `RightAlign(width)`, `Hairline(dl, min, max)`, `DrawPanel(dl, min, max)` |
 | Text | `Heading`, `TextWrapped`, `Link`, `Stat`, `TrackedCaps(dl, pos, text, color)`, `TrackedCapsWidth`, `Fit(text, maxWidth)`, `Visible(label)` |
 | Tags | `Chip(text, color, status = false)`, `ChipWidth`, `DrawChip(dl, pos, text, color, status = false)`; `Pill(text, bg, fg, status = false)`, `PillWidth`, `DrawPill(dl, pos, text, bg, fg, status = false, pad = null)`. The `Draw*` forms paint at a position (left edge, vertical center) without a layout item and return their width. |
 | Status | `StatusDot(color, pulse)`, `StatusDot(dl, center, color, pulse, radius = 0)`, `Banner(text, color, dismissable = false, icon = null, id = null)`, `ProgressBar(dl, min, width, height, fraction)`, `Tooltip`, `HelpMark(text, id = null)` |
 | Tables | `Table(id, columns, flags, outerSize = default)` → `TableScope` (`.Open`); `FixedColumn(name, width, flags = None, userId = 0)`; `TableHeaders(trackedCaps = false, rowHeight = 0, labels = null)`; `TableHeadersWithCheckAll(ticked, total, ...same options)`. With tracked caps, sortable columns keep click-to-sort and the arrow. |
-| Sidebar | `NavRow(id, icon, label, active, subtitle, enabled)` |
+| Sidebar and lists | `NavRow(id, icon, label, active, subtitle, enabled)`, `ListRow(id, label, selected, subtitle, dot, dotPulse, trailing, tooltip, enabled)` |
+| Dialogs | `Modal.Draw(title, ref open, body)`, `Modal.Confirm(title, ref open, message, confirmLabel, danger, detail)`, `Modal.Close(ref open)` |
 | Icons | `ItemIcon(itemId, hq, size)` (items, HQ, collectables and event items), `Glyph(icon)` (cached glyph string), `DrawGlyphCentered`, `DrawGlyphAt(dl, icon, center, px, color)` |
 | Theme | `Theme.Wash(alpha)`, `Theme.Shadow(alpha)`, `Theme.Fade(color, mul)`, `Theme.ColorblindShape(color)`, `Theme.SameRgb(a, b)` |
 | Motion | `Approach`, `Hover`, `Reveal`, `Tween` (in-out), `TweenOut` (out), `Pulse`, `IsStale`, `EaseSmooth` |

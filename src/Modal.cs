@@ -65,6 +65,49 @@ internal static class Modal
         }
     }
 
+    /// <summary>
+    /// A yes / no dialog: <paramref name="message"/> (and an optional Dim <paramref name="detail"/>), then the confirm
+    /// button (Danger when <paramref name="danger"/>, else Primary) and Cancel. Draw it every frame; it shows while
+    /// <paramref name="open"/> is true, and either choice (or the close button) sets it false. Returns true on the frame
+    /// the confirm button is clicked. Text wraps at 26em.
+    /// </summary>
+    public static bool Confirm(string title, ref bool open, string message, string confirmLabel, bool danger = false,
+        string? detail = null, string cancelLabel = "Cancel")
+    {
+        if (!open)
+            return false;
+        var confirmed = false;
+        var stillOpen = open;
+        Draw(title, ref stillOpen, () =>
+        {
+            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 26f);
+            ImGui.TextColored(Theme.Ink, message);
+            if (!string.IsNullOrEmpty(detail))
+                ImGui.TextColored(Theme.Dim, detail);
+            ImGui.PopTextWrapPos();
+            ImGui.Dummy(new Vector2(0f, Theme.S(6f)));
+
+            var confirmId = confirmLabel + "##modalConfirm";
+            if (danger ? W.DangerButton(confirmId) : W.PrimaryButton(confirmId))
+            {
+                confirmed = true;
+                Close(ref stillOpen);
+            }
+            ImGui.SameLine();
+            if (W.SecondaryButton(cancelLabel + "##modalCancel"))
+                Close(ref stillOpen);
+        });
+        open = stillOpen;
+        return confirmed;
+    }
+
+    /// <summary>Closes the modal being drawn from inside its body: clears the caller's flag and closes the popup.</summary>
+    public static void Close(ref bool open)
+    {
+        open = false;
+        ImGui.CloseCurrentPopup();
+    }
+
     /// <summary>Once per frame before any window draws: puts ImGui's dim back if no modal of ours was drawn last frame.</summary>
     internal static void BeginFrame()
     {

@@ -453,15 +453,26 @@ internal abstract class KitWindow : Window
         var headerH = Theme.Space.HeaderHeight;
         var innerW = size.X - gutter * 2f - Theme.S(1f);
 
-        DrawBrand(dl, new Vector2(min.X + gutter, min.Y + (headerH - Theme.S(30f)) * 0.5f));
-        W.Hairline(dl, new Vector2(min.X, min.Y + headerH), new Vector2(max.X - Theme.S(1f), min.Y + headerH + Theme.S(1f)));
+        // With a brand picture the sidebar opens with it, large and framed in the accent; otherwise the small tile sits
+        // level with the header strip.
+        float brandH;
+        if (TryGetBrandImage(out var picture))
+        {
+            brandH = DrawBrandShowcase(dl, min, size.X - Theme.S(1f), picture);
+        }
+        else
+        {
+            DrawBrand(dl, new Vector2(min.X + gutter, min.Y + (headerH - Theme.S(30f)) * 0.5f));
+            brandH = headerH;
+        }
+        W.Hairline(dl, new Vector2(min.X, min.Y + brandH), new Vector2(max.X - Theme.S(1f), min.Y + brandH + Theme.S(1f)));
 
         var op = GetRunningOperation();
         var lines = GetStatusLines();
         var statusH = StatusBlockHeight(op, lines);
 
         // The nav scrolls between the brand and the status block; the glow on the active row needs a little margin.
-        var navTop = min.Y + headerH + Theme.S(1f);
+        var navTop = min.Y + brandH + Theme.S(1f);
         var navH = MathF.Max(Theme.S(40f), max.Y - statusH - navTop);
         ImGui.SetCursorScreenPos(new Vector2(min.X, navTop));
         // Pushed until EndChild, like the body (see DrawShell): recovery measures from BeginChild.
@@ -530,6 +541,45 @@ internal abstract class KitWindow : Window
             dl.AddRectFilled(vMin, vMax, Theme.U32(Theme.Wash(0.06f)), Theme.Radius.Chip);
             dl.AddText(vMin + new Vector2(Theme.S(4f), Theme.S(1f)), Theme.U32(Theme.Slate), version);
         }
+    }
+
+    /// <summary>
+    /// The sidebar's top with a brand picture: the picture large and centered, framed in the accent, the name and the
+    /// version under it. Returns the height it took.
+    /// </summary>
+    private float DrawBrandShowcase(ImDrawListPtr dl, Vector2 min, float width, ImTextureID picture)
+    {
+        var gutter = Theme.Space.Gutter;
+        var frame = Theme.S(2f);
+        var side = MathF.Min(Theme.S(112f), width - gutter * 2f - frame * 2f);
+        var r = Theme.Radius.Small;
+        var top = min.Y + gutter + Theme.S(4f);
+        var p = new Vector2(MathF.Round(min.X + (width - side) * 0.5f), top);
+        var pMax = p + new Vector2(side, side);
+
+        dl.AddRectFilled(p - new Vector2(frame) + new Vector2(0f, Theme.S(3f)), pMax + new Vector2(frame) + new Vector2(0f, Theme.S(3f)),
+                         Theme.U32(Theme.Shadow(0.4f)), r + frame);
+        dl.AddRectFilled(p - new Vector2(frame), pMax + new Vector2(frame), Theme.U32(Theme.Accent), r + frame);
+        dl.AddImageRounded(picture, p, pMax, Vector2.Zero, Vector2.One, Theme.U32(new Vector4(1f, 1f, 1f, 1f)), r);
+
+        var y = pMax.Y + frame + Theme.S(10f);
+        using (Fonts.Title.Push())
+        {
+            var nameW = W.TrackedCapsWidth(brand, 0.06f);
+            W.TrackedCaps(dl, new Vector2(MathF.Round(min.X + (width - nameW) * 0.5f), y), brand, Theme.Ink, 0.06f);
+            y += ImGui.GetTextLineHeight() + Theme.S(3f);
+        }
+        using (Fonts.Label.Push())
+        {
+            var vs = ImGui.CalcTextSize(version);
+            var chipW = vs.X + Theme.S(8f);
+            var vMin = new Vector2(MathF.Round(min.X + (width - chipW) * 0.5f), y);
+            var vMax = vMin + new Vector2(chipW, vs.Y + Theme.S(2f));
+            dl.AddRectFilled(vMin, vMax, Theme.U32(Theme.Wash(0.06f)), Theme.Radius.Chip);
+            dl.AddText(vMin + new Vector2(Theme.S(4f), Theme.S(1f)), Theme.U32(Theme.Slate), version);
+            y = vMax.Y;
+        }
+        return y + gutter - min.Y;
     }
 
     private bool brandImageFailed;
